@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import requests
 from config import TOKEN
@@ -18,7 +19,7 @@ def send_message(msg, chat_id=None):
             print(f"[TELEGRAM] Error sending to {cid}: {e}")
 
 
-def run_polling():
+def _build_application():
     from telegram.ext import Application, CommandHandler
 
     async def cmd_start(update, context):
@@ -37,13 +38,38 @@ def run_polling():
     async def cmd_status(update, context):
         await update.message.reply_text("\u2705 Bot aktif dan berjalan.")
 
-    application = Application.builder().token(TOKEN).build()
-    application.add_handler(CommandHandler("start", cmd_start))
-    application.add_handler(CommandHandler("help", cmd_help))
-    application.add_handler(CommandHandler("status", cmd_status))
+    app = Application.builder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("status", cmd_status))
+    return app
 
-    print("[TELEGRAM-BOT] Starting polling...")
-    application.run_polling(allowed_updates=["message"])
+
+def run_polling():
+    _build_application().run_polling(allowed_updates=["message"])
+
+
+def start_polling_background():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    app = _build_application()
+
+    try:
+        loop.run_until_complete(app.initialize())
+        loop.run_until_complete(app.start())
+        loop.run_until_complete(app.updater.start_polling(allowed_updates=["message"]))
+        print("[TELEGRAM-BOT] Polling started (background)")
+        loop.run_forever()
+    except Exception as e:
+        print(f"[TELEGRAM-BOT] Fatal error: {e}")
+        logging.exception(e)
+    finally:
+        try:
+            loop.run_until_complete(app.updater.stop())
+            loop.run_until_complete(app.stop())
+            loop.run_until_complete(app.shutdown())
+        except:
+            pass
 
 
 if __name__ == "__main__":

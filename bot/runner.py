@@ -7,7 +7,7 @@ from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from bot.telegram_bot import run_polling, send_message
+from bot.telegram_bot import start_polling_background, send_message
 from bot.notifier import check_real_time
 from bot.formatter import format_market_pulse
 
@@ -96,7 +96,7 @@ if __name__ == "__main__":
     print(f"  Daily summary: at {LIVE_END}:05 WIB")
     print("=" * 55)
 
-    t_polling = threading.Thread(target=run_polling, daemon=True, name="polling")
+    t_polling = threading.Thread(target=start_polling_background, daemon=True, name="polling")
     t_polling.start()
 
     services = [
