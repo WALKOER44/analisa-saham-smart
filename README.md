@@ -159,9 +159,9 @@ flask requests python-dotenv numpy yfinance schedule
 Buka file `.env` di root proyek dan isi dengan:
 
 ```ini
-TOKEN=8915554455:AAGgmpYCgbfoWu3wsor73mXmt8MXEyMBkOc
-CHAT_ID=7746419540
-API_KEY=72Z6FBCNIZ291ADK
+TOKEN=YOUR_TOKEN
+CHAT_ID=YOUR_CHAT_ID
+API_KEY=YOUR_API_KEY
 ```
 
 - **TOKEN**: Bot Token dari [@BotFather](https://t.me/BotFather) di Telegram.
@@ -183,7 +183,7 @@ API_KEY=72Z6FBCNIZ291ADK
    - Buka grup target → klik nama grup → **Add Members** → cari `@RawDataBot`.
 4. @RawDataBot akan otomatis mengirim pesan berisi **raw JSON data** grup.
 5. Cari field `chat` → `id` — nilainya adalah Group Chat ID.
-   - Contoh: `"id": -1001234567890`
+   - Contoh: `"id": -1001234567891`
 6. **Hapus @RawDataBot dari grup** setelah mendapatkan ID.
 7. Salin ID tersebut (termasuk tanda `-` di depan) ke `CHAT_ID` di `.env`.
 
@@ -215,7 +215,7 @@ Jika sukses, bot akan mengirim pesan test ke grup/chat tujuan.
 
 ### Catatan Penting
 
-- **Group ID Supergroup** selalu diawali dengan `-100` (misal: `-1001234567890`).
+- **Group ID Supergroup** selalu diawali dengan `-100` (misal: `-1001234567891`).
 - Bot harus **menjadi anggota grup** untuk bisa mengirim pesan.
 - Jika bot tidak bisa kirim pesan, pastikan bot sudah di-**Add Admin** dengan izin **Send Messages**.
 - Setiap pembaruan kode selanjutnya **WAJIB** meng-update file `README.md` secara otomatis.
