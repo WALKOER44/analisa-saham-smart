@@ -16,27 +16,6 @@ LIVE_END = 16
 BROADCAST_INTERVAL = 1800
 
 
-class MarketGuard:
-    def __init__(self):
-        self._closed_sent = False
-        self._lock = threading.Lock()
-
-    def reset(self):
-        with self._lock:
-            self._closed_sent = False
-
-    def is_sent(self):
-        with self._lock:
-            return self._closed_sent
-
-    def mark_sent(self):
-        with self._lock:
-            self._closed_sent = True
-
-
-market_guard = MarketGuard()
-
-
 def is_market_hours():
     now = datetime.now()
     return now.weekday() < 5 and LIVE_START <= now.hour < LIVE_END
@@ -44,6 +23,10 @@ def is_market_hours():
 
 def is_market_day():
     return datetime.now().weekday() < 5
+
+
+def must_send_closing_recap(now):
+    return is_market_day() and now.hour == LIVE_END and now.minute == 0
 
 
 def read_history():
@@ -68,50 +51,53 @@ def build_ihsg_data():
     return None
 
 
-def telegram_broadcaster():
+def build_and_send(is_daily=False):
+    history = read_history()
+    if history:
+        latest = history[-1]
+        data = latest.get("data", [])
+        ihsg = build_ihsg_data()
+        msg = format_market_pulse(data, ihsg, is_daily=is_daily)
+        send_message(msg)
+        tag = "DAILY CLOSING" if is_daily else "30-min BROADCAST"
+        print(f"[{tag}] Sent ({len(data)} stocks)")
+        return True
+    return False
+
+
+def market_scheduler():
     last_broadcast = 0
-    while True:
-        try:
-            if is_market_hours():
-                market_guard.reset()
-                now_ts = time.time()
-                if now_ts - last_broadcast >= BROADCAST_INTERVAL:
-                    history = read_history()
-                    if history:
-                        latest = history[-1]
-                        data = latest.get("data", [])
-                        ihsg = build_ihsg_data()
-                        msg = format_market_pulse(data, ihsg, is_daily=False)
-                        send_message(msg)
-                        print(f"[BROADCASTER] 30-min update sent ({len(data)} stocks)")
-                        last_broadcast = now_ts
-                time.sleep(30)
-            else:
-                time.sleep(60)
-        except Exception as e:
-            print(f"[BROADCASTER] Error: {e}")
-            time.sleep(30)
+    closing_sent_today = False
+    closing_sent_date = None
 
-
-def daily_summary_scheduler():
     while True:
         try:
             now = datetime.now()
-            if is_market_day() and now.hour == LIVE_END and now.minute == 5 and not market_guard.is_sent():
-                history = read_history()
-                if history:
-                    latest = history[-1]
-                    data = latest.get("data", [])
-                    ihsg = build_ihsg_data()
-                    msg = format_market_pulse(data, ihsg, is_daily=True)
-                    send_message(msg)
-                    print(f"[DAILY] Closing report sent at {now.strftime('%H:%M')}")
-                market_guard.mark_sent()
-                print("[DAILY] Market closed — no more messages until next market day.")
-                time.sleep(300)
-            time.sleep(30)
+            today = now.date()
+
+            if not is_market_day():
+                closing_sent_today = False
+                closing_sent_date = None
+                time.sleep(120)
+                continue
+
+            if is_market_hours():
+                closing_sent_today = False
+                closing_sent_date = None
+                now_ts = time.time()
+                if now_ts - last_broadcast >= BROADCAST_INTERVAL:
+                    build_and_send(is_daily=False)
+                    last_broadcast = now_ts
+                time.sleep(30)
+            else:
+                if must_send_closing_recap(now) and not closing_sent_today and today != closing_sent_date:
+                    build_and_send(is_daily=True)
+                    closing_sent_today = True
+                    closing_sent_date = today
+                    print("[SCHEDULER] Closing recap sent. Bot will be silent until next market day 09:00.")
+                time.sleep(60)
         except Exception as e:
-            print(f"[DAILY] Error: {e}")
+            print(f"[SCHEDULER] Error: {e}")
             time.sleep(30)
 
 
@@ -139,25 +125,25 @@ if __name__ == "__main__":
             print("\n[EXIT] Local mode stopped")
     else:
         print("=" * 55)
-        print("  TELEGRAM BOT - ALL SERVICES (ONLINE MODE)")
+        print("  TELEGRAM BOT - SCHEDULER SAHAM")
         print("=" * 55)
-        print(f"  Market hours: {LIVE_START}:00-{LIVE_END}:00 WIB (weekdays)")
-        print(f"  Broadcast interval: 30 menit")
-        print(f"  Signal notifier: real-time (30s, only during market hours)")
-        print(f"  Daily summary: at {LIVE_END}:05 WIB (1x, then stops until next market day)")
+        print(f"  Market hours: Senin-Jumat {LIVE_START}:00-{LIVE_END}:00 WIB")
+        print(f"  Periodic update: setiap 30 menit (1 pesan gabungan)")
+        print(f"  Closing recap: pukul {LIVE_END}:00 WIB (1x, lalu silent)")
+        print(f"  Di luar jam pasar / weekend: TIDAK ada pesan")
+        print(f"  Polling Telegram: aktif (termasuk /clear command)")
         print("=" * 55)
 
         t_polling = threading.Thread(target=start_polling_background, daemon=True, name="polling")
         t_polling.start()
 
-        services = [
-            threading.Thread(target=check_real_time, daemon=True, name="notifier"),
-            threading.Thread(target=telegram_broadcaster, daemon=True, name="broadcaster"),
-            threading.Thread(target=daily_summary_scheduler, daemon=True, name="daily-summary"),
-        ]
-        for t in services:
-            t.start()
-            print(f"[MAIN] Started {t.name}")
+        t_notifier = threading.Thread(target=check_real_time, daemon=True, name="notifier")
+        t_notifier.start()
+        print("[MAIN] Started notifier (internal state tracking, no per-stock alerts)")
+
+        t_scheduler = threading.Thread(target=market_scheduler, daemon=True, name="scheduler")
+        t_scheduler.start()
+        print("[MAIN] Started market_scheduler (30-min broadcast + 16:00 closing recap)")
 
         try:
             while True:
