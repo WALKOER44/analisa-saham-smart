@@ -10,7 +10,7 @@ from bot.notifier import check_real_time
 
 LIVE_START = 9
 LIVE_END = 16
-INTERVAL_SECONDS = 5 * 60
+INTERVAL_SECONDS = 30 * 60
 
 def clean_symbol(sym):
     return sym.replace(".JK", "")

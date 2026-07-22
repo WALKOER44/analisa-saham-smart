@@ -9,6 +9,14 @@ from bot.telegram_bot import send_message
 
 LAST_STATE_FILE = "data/last_state.json"
 POLL_INTERVAL = 30
+LIVE_START = 9
+LIVE_END = 16
+
+
+def is_market_hours():
+    now = datetime.now()
+    return now.weekday() < 5 and LIVE_START <= now.hour < LIVE_END
+
 
 def load_last_state():
     try:
@@ -17,15 +25,18 @@ def load_last_state():
     except:
         return {}
 
+
 def save_last_state(state):
     with open(LAST_STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
+
 def clean_symbol(sym):
     return sym.replace(".JK", "")
 
+
 def format_alert(sym, signal, price, trend, note, score, reasoning=""):
-    icon = "🟢" if signal == "BUY" else ("🔴" if signal == "SELL" else "⚪")
+    icon = "\U0001f7e2" if signal == "BUY" else ("\U0001f534" if signal == "SELL" else "\u26aa")
     msg = (
         f"{icon} *[{sym}]*\n"
         f"\U0001f4b0 Harga: Rp{price:,.0f}\n"
@@ -38,12 +49,14 @@ def format_alert(sym, signal, price, trend, note, score, reasoning=""):
         msg += f"\n\U0001f4ac {reasoning[:120]}"
     return msg
 
+
 def format_top3(top3):
     lines = ["\U0001f3c6 *TOP 3 Rekomendasi*"]
     for r in top3:
-        icon = "🟢" if r["signal"] == "BUY" else "🔴" if r["signal"] == "SELL" else "⚪"
-        lines.append(f"{icon} #{r['rank']} {clean_symbol(r['symbol'])} — {r['signal']} ({r['score']:+d}) | {r['note']}")
+        icon = "\U0001f7e2" if r["signal"] == "BUY" else "\U0001f534" if r["signal"] == "SELL" else "\u26aa"
+        lines.append(f"{icon} #{r['rank']} {clean_symbol(r['symbol'])} \u2014 {r['signal']} ({r['score']:+d}) | {r['note']}")
     return "\n".join(lines)
+
 
 def check_real_time():
     print("[NOTIFIER] Real-time check started")
@@ -59,6 +72,8 @@ def check_real_time():
             results = analyze_market(data)
             save_history(results)
 
+            market_open = is_market_hours()
+
             for r in results:
                 sym = r["symbol"]
                 clean = clean_symbol(sym)
@@ -66,22 +81,21 @@ def check_real_time():
                 score = r["score"]
                 old = prev.get(sym, {})
 
-                old_signal = old.get("signal", "HOLD")
-                old_score = old.get("score", 0)
-                old_note = old.get("note", "")
+                if market_open:
+                    old_signal = old.get("signal", "HOLD")
+                    old_score = old.get("score", 0)
 
-                should_alert = False
-
-                if signal != old_signal:
-                    should_alert = True
-                elif signal == old_signal and old.get("signal") != "HOLD":
-                    if score != old_score:
+                    should_alert = False
+                    if signal != old_signal:
                         should_alert = True
+                    elif signal == old_signal and old.get("signal") != "HOLD":
+                        if score != old_score:
+                            should_alert = True
 
-                if should_alert:
-                    msg = format_alert(clean, signal, r["price"], r["trend"], r["note"], score, r.get("reasoning", ""))
-                    send_message(msg)
-                    print(f"[NOTIFIER] Alert {clean}: {signal} (score {score:+d})")
+                    if should_alert:
+                        msg = format_alert(clean, signal, r["price"], r["trend"], r["note"], score, r.get("reasoning", ""))
+                        send_message(msg)
+                        print(f"[NOTIFIER] Alert {clean}: {signal} (score {score:+d})")
 
                 prev[sym] = {
                     "signal": signal,
@@ -94,15 +108,16 @@ def check_real_time():
                 }
                 add_trade(sym, signal, r["price"])
 
-            new_top3 = sorted([r for r in results if r["is_top3"]], key=lambda x: x["rank"])
-            old_top3_sigs = prev.get("_top3", [])
-            new_top3_sigs = [(r["symbol"], r["signal"], r["score"]) for r in new_top3]
+            if market_open:
+                new_top3 = sorted([r for r in results if r["is_top3"]], key=lambda x: x["rank"])
+                old_top3_sigs = prev.get("_top3", [])
+                new_top3_sigs = [(r["symbol"], r["signal"], r["score"]) for r in new_top3]
 
-            if new_top3_sigs != old_top3_sigs:
-                msg = format_top3(new_top3)
-                send_message(msg)
-                print("[NOTIFIER] TOP 3 updated")
-                prev["_top3"] = new_top3_sigs
+                if new_top3_sigs != old_top3_sigs:
+                    msg = format_top3(new_top3)
+                    send_message(msg)
+                    print("[NOTIFIER] TOP 3 updated")
+                    prev["_top3"] = new_top3_sigs
 
             save_last_state(prev)
 

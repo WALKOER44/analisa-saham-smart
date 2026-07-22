@@ -1,10 +1,30 @@
 import asyncio
 import json
 import logging
+import os
 import requests
 from config import TOKEN, IS_LOCAL, LOCAL_LLM_ENDPOINT, LOCAL_LLM_MODEL
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
+
+MESSAGE_LOG_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data", "message_log.json"
+)
+
+
+def _load_message_log():
+    try:
+        with open(MESSAGE_LOG_PATH) as f:
+            return json.load(f)
+    except:
+        return {}
+
+
+def _save_message_log(log):
+    os.makedirs(os.path.dirname(MESSAGE_LOG_PATH), exist_ok=True)
+    with open(MESSAGE_LOG_PATH, "w") as f:
+        json.dump(log, f, indent=2)
 
 
 def send_to_local_llm(msg):
@@ -16,7 +36,6 @@ def send_to_local_llm(msg):
     )
 
     try:
-        # Ollama format
         resp = requests.post(
             f"{LOCAL_LLM_ENDPOINT}/api/generate",
             json={
@@ -47,7 +66,6 @@ def send_to_local_llm(msg):
     except Exception as e:
         print(f"[LOCAL LLM] Error: {e}")
 
-    # Fallback: print ke console
     print("\n" + "-" * 55)
     print(msg)
     print("-" * 55 + "\n")
@@ -57,20 +75,61 @@ def send_to_local_llm(msg):
 def send_message(msg, chat_id=None):
     from config import CHAT_ID
 
-    # Local mode: arahkan ke LLM lokal, jangan kirim ke Telegram
     if IS_LOCAL:
         return send_to_local_llm(msg)
 
-    # Online mode: kirim ke Telegram seperti biasa
     targets = [chat_id] if chat_id else [cid.strip() for cid in str(CHAT_ID).split(",") if cid.strip()]
     if not targets:
         return
+
+    log = _load_message_log()
+
     for cid in targets:
         try:
             url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-            requests.post(url, data={"chat_id": cid, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+            resp = requests.post(url, data={"chat_id": cid, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+            if resp.ok:
+                result = resp.json()
+                msg_id = result.get("result", {}).get("message_id")
+                if msg_id:
+                    key = str(cid)
+                    if key not in log:
+                        log[key] = []
+                    log[key].append(msg_id)
+                    _save_message_log(log)
         except Exception as e:
             print(f"[TELEGRAM] Error sending to {cid}: {e}")
+
+
+def get_chat_admins(chat_id):
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/getChatAdministrators"
+        resp = requests.post(url, data={"chat_id": chat_id}, timeout=10)
+        if resp.ok:
+            result = resp.json()
+            return [admin["user"]["id"] for admin in result.get("result", [])]
+    except Exception as e:
+        print(f"[TELEGRAM] Error getting admins: {e}")
+    return []
+
+
+def delete_bot_messages(chat_id):
+    log = _load_message_log()
+    key = str(chat_id)
+    deleted = 0
+    if key not in log:
+        return 0
+    for msg_id in log[key]:
+        try:
+            url = f"https://api.telegram.org/bot{TOKEN}/deleteMessage"
+            resp = requests.post(url, data={"chat_id": chat_id, "message_id": msg_id}, timeout=10)
+            if resp.ok:
+                deleted += 1
+        except:
+            pass
+    log[key] = []
+    _save_message_log(log)
+    return deleted
 
 
 def _build_application():
@@ -86,16 +145,41 @@ def _build_application():
         await update.message.reply_text(
             "/start - Mulai bot\n"
             "/help - Bantuan ini\n"
-            "/status - Status sistem"
+            "/status - Status sistem\n"
+            "/clear - Hapus semua pesan bot (Admin/Owner saja)"
         )
 
     async def cmd_status(update, context):
         await update.message.reply_text("\u2705 Bot aktif dan berjalan.")
 
+    async def cmd_clear(update, context):
+        chat_id = update.effective_chat.id
+        user_id = update.effective_user.id
+
+        admins = get_chat_admins(chat_id)
+        if user_id not in admins:
+            await update.message.reply_text(
+                "\u26a0\ufe0f Akses ditolak. Hanya admin grup yang dapat menggunakan perintah ini."
+            )
+            return
+
+        count = delete_bot_messages(chat_id)
+        msg = await update.message.reply_text(
+            f"\u2705 Berhasil menghapus {count} pesan bot."
+        )
+
+        await asyncio.sleep(5)
+        try:
+            await context.bot.delete_message(chat_id=chat_id, message_id=update.message.message_id)
+            await context.bot.delete_message(chat_id=chat_id, message_id=msg.message_id)
+        except:
+            pass
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("help", cmd_help))
     app.add_handler(CommandHandler("status", cmd_status))
+    app.add_handler(CommandHandler("clear", cmd_clear))
     return app
 
 

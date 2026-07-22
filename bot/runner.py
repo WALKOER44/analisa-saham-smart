@@ -13,11 +13,37 @@ from bot.formatter import format_market_pulse
 
 LIVE_START = 9
 LIVE_END = 16
+BROADCAST_INTERVAL = 1800
+
+
+class MarketGuard:
+    def __init__(self):
+        self._closed_sent = False
+        self._lock = threading.Lock()
+
+    def reset(self):
+        with self._lock:
+            self._closed_sent = False
+
+    def is_sent(self):
+        with self._lock:
+            return self._closed_sent
+
+    def mark_sent(self):
+        with self._lock:
+            self._closed_sent = True
+
+
+market_guard = MarketGuard()
 
 
 def is_market_hours():
     now = datetime.now()
     return now.weekday() < 5 and LIVE_START <= now.hour < LIVE_END
+
+
+def is_market_day():
+    return datetime.now().weekday() < 5
 
 
 def read_history():
@@ -47,7 +73,9 @@ def telegram_broadcaster():
     while True:
         try:
             if is_market_hours():
-                if time.time() - last_broadcast >= 300:
+                market_guard.reset()
+                now_ts = time.time()
+                if now_ts - last_broadcast >= BROADCAST_INTERVAL:
                     history = read_history()
                     if history:
                         latest = history[-1]
@@ -55,11 +83,10 @@ def telegram_broadcaster():
                         ihsg = build_ihsg_data()
                         msg = format_market_pulse(data, ihsg, is_daily=False)
                         send_message(msg)
-                        print(f"[BROADCASTER] 5-min update sent ({len(data)} stocks)")
-                        last_broadcast = time.time()
+                        print(f"[BROADCASTER] 30-min update sent ({len(data)} stocks)")
+                        last_broadcast = now_ts
                 time.sleep(30)
             else:
-                last_broadcast = 0
                 time.sleep(60)
         except Exception as e:
             print(f"[BROADCASTER] Error: {e}")
@@ -70,7 +97,7 @@ def daily_summary_scheduler():
     while True:
         try:
             now = datetime.now()
-            if now.weekday() < 5 and now.hour == 16 and now.minute == 5:
+            if is_market_day() and now.hour == LIVE_END and now.minute == 5 and not market_guard.is_sent():
                 history = read_history()
                 if history:
                     latest = history[-1]
@@ -78,7 +105,9 @@ def daily_summary_scheduler():
                     ihsg = build_ihsg_data()
                     msg = format_market_pulse(data, ihsg, is_daily=True)
                     send_message(msg)
-                    print(f"[DAILY] Closing report sent")
+                    print(f"[DAILY] Closing report sent at {now.strftime('%H:%M')}")
+                market_guard.mark_sent()
+                print("[DAILY] Market closed — no more messages until next market day.")
                 time.sleep(300)
             time.sleep(30)
         except Exception as e:
@@ -103,7 +132,6 @@ if __name__ == "__main__":
         print("  Jalankan analisis manual melalui:")
         print("    python app.py")
         print("=" * 55)
-        # Keep process alive for local testing
         try:
             while True:
                 time.sleep(10)
@@ -114,9 +142,9 @@ if __name__ == "__main__":
         print("  TELEGRAM BOT - ALL SERVICES (ONLINE MODE)")
         print("=" * 55)
         print(f"  Market hours: {LIVE_START}:00-{LIVE_END}:00 WIB (weekdays)")
-        print(f"  Signal notifier: real-time (30s)")
-        print(f"  Market broadcast: every 5 min during market hours")
-        print(f"  Daily summary: at {LIVE_END}:05 WIB")
+        print(f"  Broadcast interval: 30 menit")
+        print(f"  Signal notifier: real-time (30s, only during market hours)")
+        print(f"  Daily summary: at {LIVE_END}:05 WIB (1x, then stops until next market day)")
         print("=" * 55)
 
         t_polling = threading.Thread(target=start_polling_background, daemon=True, name="polling")
