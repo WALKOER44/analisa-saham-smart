@@ -6,3 +6,4 @@ yfinance>=0.2
 mcp>=1.0
 httpx>=0.27
 gunicorn>=22.0
+python-telegram-bot>=20.0
