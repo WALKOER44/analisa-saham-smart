@@ -1,13 +1,67 @@
 import asyncio
+import json
 import logging
 import requests
-from config import TOKEN
+from config import TOKEN, IS_LOCAL, LOCAL_LLM_ENDPOINT, LOCAL_LLM_MODEL
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
 
+def send_to_local_llm(msg):
+    """Kirim pesan ke LLM lokal (Ollama / LM Studio / OpenAI-compatible) untuk diproses."""
+    prompt = (
+        "Berikut adalah hasil analisis saham otomatis. "
+        "Buat ringkasan dalam bahasa Indonesia yang informatif dan mudah dibaca:\n\n"
+        f"{msg}"
+    )
+
+    try:
+        # Ollama format
+        resp = requests.post(
+            f"{LOCAL_LLM_ENDPOINT}/api/generate",
+            json={
+                "model": LOCAL_LLM_MODEL,
+                "prompt": prompt,
+                "stream": False,
+            },
+            timeout=60,
+        )
+        if resp.status_code == 200:
+            result = resp.json()
+            response_text = result.get("response", "")
+            print("\n" + "=" * 55)
+            print("  [LOCAL LLM] Response:")
+            print(response_text)
+            print("=" * 55 + "\n")
+            return response_text
+        else:
+            print(f"[LOCAL LLM] HTTP {resp.status_code}: {resp.text}")
+            return None
+
+    except requests.exceptions.ConnectionError:
+        print(f"[LOCAL LLM] Gagal terhubung ke {LOCAL_LLM_ENDPOINT}. Pastikan Ollama/LM Studio berjalan.")
+        print("[LOCAL LLM] Fallback: output dicetak ke console saja.")
+        print("\n" + "-" * 55)
+        print(msg)
+        print("-" * 55 + "\n")
+    except Exception as e:
+        print(f"[LOCAL LLM] Error: {e}")
+
+    # Fallback: print ke console
+    print("\n" + "-" * 55)
+    print(msg)
+    print("-" * 55 + "\n")
+    return msg
+
+
 def send_message(msg, chat_id=None):
     from config import CHAT_ID
+
+    # Local mode: arahkan ke LLM lokal, jangan kirim ke Telegram
+    if IS_LOCAL:
+        return send_to_local_llm(msg)
+
+    # Online mode: kirim ke Telegram seperti biasa
     targets = [chat_id] if chat_id else [cid.strip() for cid in str(CHAT_ID).split(",") if cid.strip()]
     if not targets:
         return

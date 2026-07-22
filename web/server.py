@@ -11,10 +11,11 @@ from flask import Flask, render_template, jsonify
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 try:
-    from config import TOKEN as TELEGRAM_BOT_TOKEN, CHAT_ID as TELEGRAM_CHAT_ID
+    from config import TOKEN as TELEGRAM_BOT_TOKEN, CHAT_ID as TELEGRAM_CHAT_ID, IS_LOCAL
 except ImportError:
     TELEGRAM_BOT_TOKEN = os.getenv("TOKEN", "")
     TELEGRAM_CHAT_ID = os.getenv("CHAT_ID", "")
+    IS_LOCAL = os.getenv("IS_LOCAL", "False").strip().lower() in ("true", "1", "yes")
 
 REALTIME_DATA = {}
 REALTIME_LOCK = threading.Lock()
@@ -23,6 +24,12 @@ NEWS_CACHE = []
 NEWS_CACHE_TIME = 0
 
 def send_telegram_message(text):
+    if IS_LOCAL:
+        print("[LOCAL MODE] send_telegram_message dialihkan ke console:")
+        print("-" * 55)
+        print(text)
+        print("-" * 55)
+        return True
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return False
     chat_ids = [cid.strip() for cid in TELEGRAM_CHAT_ID.split(",") if cid.strip()]

@@ -87,29 +87,52 @@ def daily_summary_scheduler():
 
 
 if __name__ == "__main__":
-    print("=" * 55)
-    print("  TELEGRAM BOT - ALL SERVICES")
-    print("=" * 55)
-    print(f"  Market hours: {LIVE_START}:00-{LIVE_END}:00 WIB (weekdays)")
-    print(f"  Signal notifier: real-time (30s)")
-    print(f"  Market broadcast: every 5 min during market hours")
-    print(f"  Daily summary: at {LIVE_END}:05 WIB")
-    print("=" * 55)
+    from config import IS_LOCAL
 
-    t_polling = threading.Thread(target=start_polling_background, daemon=True, name="polling")
-    t_polling.start()
+    if IS_LOCAL:
+        print("=" * 55)
+        print("  LOCAL MODE - Scheduler & Polling DISABLED")
+        print("=" * 55)
+        print("  IS_LOCAL=True terdeteksi.")
+        print("  Background scheduler tidak dijalankan untuk")
+        print("  menghindari bentrok/spam ke Telegram utama.")
+        print("  Output akan dialihkan ke LLM lokal")
+        print("  atau dicetak ke console.")
+        print("=" * 55)
+        print()
+        print("  Jalankan analisis manual melalui:")
+        print("    python app.py")
+        print("=" * 55)
+        # Keep process alive for local testing
+        try:
+            while True:
+                time.sleep(10)
+        except KeyboardInterrupt:
+            print("\n[EXIT] Local mode stopped")
+    else:
+        print("=" * 55)
+        print("  TELEGRAM BOT - ALL SERVICES (ONLINE MODE)")
+        print("=" * 55)
+        print(f"  Market hours: {LIVE_START}:00-{LIVE_END}:00 WIB (weekdays)")
+        print(f"  Signal notifier: real-time (30s)")
+        print(f"  Market broadcast: every 5 min during market hours")
+        print(f"  Daily summary: at {LIVE_END}:05 WIB")
+        print("=" * 55)
 
-    services = [
-        threading.Thread(target=check_real_time, daemon=True, name="notifier"),
-        threading.Thread(target=telegram_broadcaster, daemon=True, name="broadcaster"),
-        threading.Thread(target=daily_summary_scheduler, daemon=True, name="daily-summary"),
-    ]
-    for t in services:
-        t.start()
-        print(f"[MAIN] Started {t.name}")
+        t_polling = threading.Thread(target=start_polling_background, daemon=True, name="polling")
+        t_polling.start()
 
-    try:
-        while True:
-            time.sleep(10)
-    except KeyboardInterrupt:
-        print("\n[EXIT] Bot stopped")
+        services = [
+            threading.Thread(target=check_real_time, daemon=True, name="notifier"),
+            threading.Thread(target=telegram_broadcaster, daemon=True, name="broadcaster"),
+            threading.Thread(target=daily_summary_scheduler, daemon=True, name="daily-summary"),
+        ]
+        for t in services:
+            t.start()
+            print(f"[MAIN] Started {t.name}")
+
+        try:
+            while True:
+                time.sleep(10)
+        except KeyboardInterrupt:
+            print("\n[EXIT] Bot stopped")

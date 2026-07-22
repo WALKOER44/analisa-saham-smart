@@ -59,16 +59,26 @@ def is_market_hours():
     return LIVE_START <= now.hour < LIVE_END
 
 def run():
+    from config import IS_LOCAL
+
+    mode_label = "LOCAL" if IS_LOCAL else "ONLINE"
     print("=" * 55)
     print("ANALISA SAHAM SMART - SISTEM SIGNAL CERDAS")
     print("=" * 55)
-    print(f"Mode: LIVE ({LIVE_START}:00-{LIVE_END}:00) / FINAL (1x)")
-    print(f"Notifier: real-time tiap 60 detik (alert BUY kuat / SELL)")
+    if IS_LOCAL:
+        print(f"Mode: LOCAL (console / local LLM, scheduler disabled)")
+        print(f"Notifier: disabled (tidak ada spam ke Telegram)")
+    else:
+        print(f"Mode: ONLINE ({LIVE_START}:00-{LIVE_END}:00 / FINAL 1x)")
+        print(f"Notifier: real-time tiap 60 detik (alert BUY kuat / SELL)")
     print("=" * 55)
 
-    notifier_thread = threading.Thread(target=check_real_time, daemon=True)
-    notifier_thread.start()
-    print("[MAIN] Real-time notifier started (background)\n")
+    if not IS_LOCAL:
+        notifier_thread = threading.Thread(target=check_real_time, daemon=True)
+        notifier_thread.start()
+        print("[MAIN] Real-time notifier started (background)\n")
+    else:
+        print("[LOCAL MODE] Notifier tidak dijalankan. Output ke console / local LLM.\n")
 
     if is_market_hours():
         print(f"[LIVE MODE] Market OPEN - every {INTERVAL_SECONDS // 60} min")
@@ -84,7 +94,7 @@ def run():
         print("[FINAL MODE] Market CLOSED - single run")
         run_analysis()
 
-    print("\n[DONE] Analysis complete. Notifier still running in background.")
+    print(f"\n[DONE] Analysis complete. (mode: {mode_label})")
     print("[DONE] Press Ctrl+C to stop.")
 
     try:
