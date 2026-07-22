@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Analisa Saham Smart — Dashboard Real-Time</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="header-bar">
+  <h1>
+    Analisa Saham Smart
+    <span id="reload-badge">TERBARU</span>
+  </h1>
+  <p class="subtitle" id="live-status">Memantau 20 saham unggulan Indonesia secara real-time</p>
+  <div class="header-meta">
+    <span class="live-indicator"><span class="dot"></span> LIVE REALTIME MARKET</span>
+    <span class="market-status" id="market-status">&#9679; LOADING</span>
+    <div class="view-toggle">
+      <button class="btn active" data-view="full" onclick="switchView('full', this)">Full</button>
+      <button class="btn" data-view="compact" onclick="switchView('compact', this)">Compact</button>
+    </div>
+  </div>
+</div>
+
+<div class="ticker-tape" id="ticker-tape">
+  <div class="ticker-track" id="ticker-track">
+    <span class="market-loading">Memuat data pasar...</span>
+  </div>
+</div>
+
+<div class="market-bar" id="market-bar">
+  <div class="market-loading">Memuat data pasar...</div>
+</div>
+
+<div id="market-chart-section">
+  <div class="market-chart-controls">
+    <button class="btn active" data-mkt="ihsg" onclick="switchMarketChart('ihsg', this)">IHSG</button>
+    <button class="btn" data-mkt="usd" onclick="switchMarketChart('usd', this)">USD/IDR</button>
+  </div>
+  <div class="market-chart-wrapper">
+    <div class="market-live-header">
+      <span class="mkt-live-label" id="mkt-live-label">IHSG</span>
+      <span class="mkt-live-price" id="mkt-live-price">-</span>
+      <span class="mkt-live-change" id="mkt-live-change">-</span>
+    </div>
+    <canvas id="market-chart-canvas" height="180"></canvas>
+    <div class="intra-stats" id="mkt-live-stats" style="display:none">
+      <span>Tertinggi: <span class="up" id="mkt-live-high">-</span></span>
+      <span>Terendah: <span class="down" id="mkt-live-low">-</span></span>
+    </div>
+  </div>
+</div>
+
+<div class="main-layout" id="main-layout-id">
+  <div class="main-content">
+    <div class="section-title">TOP 3 Rekomendasi</div>
+    <div class="top3-grid" id="top3-grid"></div>
+
+    <div class="section-title">Portofolio</div>
+    <div class="grid" id="portfolio-grid"></div>
+
+    <div class="section-title">Watchlist Semua Saham</div>
+    <div class="search-wrap">
+      <div class="search-bar">
+        <span class="icon">&#x1F50D;</span>
+        <input type="text" id="search-input" placeholder="Cari saham (BBCA, TLKM, GOTO...)" oninput="setSearch(this.value)">
+      </div>
+      <span class="search-count" id="search-count">Menampilkan 0 saham</span>
+    </div>
+    <div class="sector-tabs" id="sector-tabs"></div>
+    <div class="grid" id="signal-grid"></div>
+    <div class="pagination" id="pagination"></div>
+
+    <div class="section-title">Riwayat Keputusan <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400">(sinyal terbaru per saham)</span></div>
+    <div class="controls" style="margin-bottom:12px">
+      <button class="btn active" data-filter="all" onclick="setFilter('all', this)">Semua</button>
+      <button class="btn" data-filter="buy" onclick="setFilter('buy', this)">Beli</button>
+      <button class="btn" data-filter="sell" onclick="setFilter('sell', this)">Jual</button>
+      <button class="btn danger" onclick="deleteAll()">Hapus Semua</button>
+    </div>
+    <div class="grid" id="history-grid"></div>
+  </div>
+
+  <div class="sidebar-panel" id="sidebar-panel">
+    <div class="sidebar-box">
+      <div class="sidebar-box-title">&#x1F4C8; Top Gainers</div>
+      <div id="sidebar-gainers"><div class="empty" style="padding:12px 0">Memuat...</div></div>
+    </div>
+    <div class="sidebar-box">
+      <div class="sidebar-box-title">&#x1F4C9; Top Losers</div>
+      <div id="sidebar-losers"><div class="empty" style="padding:12px 0">Memuat...</div></div>
+    </div>
+    <div class="sidebar-box">
+      <div class="sidebar-box-title">&#x1F4CA; Sentimen Pasar</div>
+      <div id="sidebar-sentiment"><div class="empty" style="padding:12px 0">Memuat...</div></div>
+    </div>
+    <div class="sidebar-box">
+      <div class="sidebar-box-title">&#x1F4F0; Berita Terkini</div>
+      <div id="sidebar-news"><div class="empty" style="padding:12px 0">Memuat...</div></div>
+    </div>
+    <div class="sidebar-box" style="text-align:center">
+      <button class="btn" onclick="showDailySummary()" style="width:100%;justify-content:center">&#x1F4CA; Ringkasan Harian</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="closeModal(event)">
+  <div class="modal-content" id="modal-content">
+    <button class="modal-close" onclick="closeModal()">&times;</button>
+    <div id="modal-body"><div class="modal-loading">Memuat data...</div></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="daily-summary-modal" onclick="closeDailySummary(event)">
+  <div class="modal-content" style="max-width:600px">
+    <button class="modal-close" onclick="closeDailySummary()">&times;</button>
+    <div id="daily-summary-body">
+      <div class="modal-loading">Memuat ringkasan harian...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const COMPANY_EMOJI = {
+  BBCA:"\u{1F3E6}",BBRI:"\u{1F3E6}",BMRI:"\u{1F3E6}",BBNI:"\u{1F3E6}",
+  TLKM:"\u{1F4E1}",ASII:"\u{1F697}",
+  ICBP:"\u{1F35C}",INDF:"\u{1F35C}",
+  UNVR:"\u{1F9F4}",ADRO:"\u{26CF}\uFE0F",
+  GOTO:"\u{1F310}",PTBA:"\u{26CF}\uFE0F",ANTM:"\u{1F3DB}\uFE0F",
+  CPIN:"\u{1F414}",KLBF:"\u{1F48A}",
+  SMGR:"\u{1F3D7}\uFE0F",PGAS:"\u{1F525}",
+  EXCL:"\u{1F4F1}",MEDC:"\u{1F30D}",JSMR:"\u{1F6A6}"
+};
+const COMPANY_NAME = {
+  BBCA:"Bank Central Asia",BBRI:"Bank Rakyat Indonesia",
+  BMRI:"Bank Mandiri",BBNI:"Bank Negara Indonesia",
+  TLKM:"Telkom Indonesia",ASII:"Astra International",
+  ICBP:"Indofood CBP Sukses Makmur",INDF:"Indofood Sukses Makmur",
+  UNVR:"Unilever Indonesia",ADRO:"Adaro Energy",
+  GOTO:"Gojek Tokopedia",PTBA:"Bukit Asam",
+  ANTM:"Aneka Tambang",CPIN:"Charoen Pokphand Indonesia",
+  KLBF:"Kalbe Farma",SMGR:"Semen Indonesia",
+  PGAS:"Perusahaan Gas Negara",EXCL:"XL Axiata",
+  MEDC:"Medco Energi",JSMR:"Jasa Marga"
+};
+const TREND_EMOJI = { UPTREND:"\u{1F4C8}", DOWNTREND:"\u{1F4C9}", FLAT:"\u{27A1}\uFE0F" };
+const NOTE_EMOJI = {
+  Rebound:"\u{1F504}", Accumulation:"\u{1F4E5}",
+  "Take Profit":"\u{1F4B5}", Overbought:"\u{26A0}\uFE0F",
+  Sideways:"\u{1F518}", Uptrend:"\u{1F4C8}", Downtrend:"\u{1F4C9}"
+};
+const SECTOR_MAP_LABEL = {
+  "Financial Services": "Banking",
+  "Energy": "Mining",
+  "Consumer Defensive": "Consumer",
+  "Technology": "Tech",
+  "Telecommunications": "Tech",
+  "Industrials": "Industrial"
+};
+
+let allHistory = [];
+let currentFilter = 'all';
+let marketChartType = 'ihsg';
+let marketChartInstance = null;
+let viewMode = 'full';
+let prevDataHash = '';
+let prevLiveHash = '';
+let searchText = '';
+let currentSector = 'all';
+let currentPage = 1;
+const PER_PAGE = 12;
+let prevPrices = {};
+
+function setFilter(filter, btn) {
+  currentFilter = filter;
+  document.querySelectorAll('.controls .btn[data-filter]').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderHistory();
+}
+function dataHash(d) { return JSON.stringify((d||[]).map(x=>x.symbol+x.signal+x.score+x.price)); }
+function liveHash(d) { if(!d)return ''; return Object.keys(d).sort().map(k=>k+(d[k]?d[k].price:'')).join('|'); }
+
+function applyFlashEffects(newPrices) {
+  const els = document.querySelectorAll('[data-flash-key]');
+  els.forEach(el => {
+    const key = el.dataset.flashKey;
+    const oldVal = prevPrices[key];
+    const newVal = parseFloat(el.dataset.flashVal);
+    if (oldVal !== undefined && newVal !== undefined && oldVal !== newVal) {
+      if (newVal > oldVal) {
+        el.classList.remove('flash-down');
+        el.classList.add('flash-up');
+        setTimeout(() => el.classList.remove('flash-up'), 800);
+      } else if (newVal < oldVal) {
+        el.classList.remove('flash-up');
+        el.classList.add('flash-down');
+        setTimeout(() => el.classList.remove('flash-down'), 800);
+      }
+    }
+    prevPrices[key] = newVal;
+  });
+  if (newPrices) {
+    Object.keys(newPrices).forEach(k => {
+      const v = parseFloat(newPrices[k]?.price);
+      if (!isNaN(v)) prevPrices['live_' + k] = v;
+    });
+  }
+}
+
+function buildTickerItems() {
+  const live = window.livePrices || {};
+  const latest = window.latestData || [];
+  if (!Object.keys(live).length && !latest.length) return;
+  let items = [];
+  const symList = Object.keys(live).length ? Object.keys(live) : latest.map(d => d.symbol);
+  for (const sym of symList) {
+    const ld = live[sym];
+    const sd = latest.find(d => d.symbol === sym) || {};
+    const price = ld ? ld.price : sd.price;
+    const chg = ld ? ld.change_pct : sd.change_pct;
+    if (!price) continue;
+    const cs = sym.replace('.JK', '');
+    const cls = (chg || 0) >= 0 ? 'up' : 'down';
+    const arrow = (chg || 0) >= 0 ? '\u25B2' : '\u25BC';
+    items.push(`<span class="ticker-item"><span class="ticker-sym">${cs}</span><span class="ticker-price">Rp${Number(price).toLocaleString()}</span><span class="ticker-change ${cls}">${arrow} ${chg > 0 ? '+' : ''}${(chg || 0).toFixed(2)}%</span></span>`);
+  }
+  const track = document.getElementById('ticker-track');
+  if (items.length) {
+    track.innerHTML = items.join('') + items.join('');
+  }
+}
+
+async function fetchLivePrices() {
+  try {
+    const res = await fetch('/api/live');
+    const data = await res.json();
+    if (data.error) return;
+    const hash = liveHash(data);
+    if (prevLiveHash && hash !== prevLiveHash) {
+      const badge = document.getElementById('reload-badge');
+      if (badge) { badge.style.display = 'inline'; setTimeout(() => { badge.style.display = 'none'; }, 2000); }
+    }
+    prevLiveHash = hash;
+    window.livePrices = data;
+    if (window.latestData) { renderCards(); renderTop3(); renderPortfolio(); renderSidebar(); }
+    buildTickerItems();
+    applyFlashEffects(data);
+  } catch (e) {}
+}
+
+async function fetchData() {
+  try {
+    const [latestRes, buyRes, sellRes] = await Promise.all([
+      fetch('/api/latest'), fetch('/api/buy'), fetch('/api/sell')
+    ]);
+    const newData = await latestRes.json();
+    const hash = dataHash(newData);
+    if (prevDataHash && hash !== prevDataHash) {
+      const badge = document.getElementById('reload-badge');
+      if (badge) { badge.style.display = 'inline'; setTimeout(() => { badge.style.display = 'none'; }, 3000); }
+    }
+    prevDataHash = hash;
+    window.latestData = newData;
+    window.buyData = await buyRes.json();
+    window.sellData = await sellRes.json();
+    render();
+  } catch (e) { console.error('Fetch error:', e); }
+}
+
+async function fetchMarket() { try { const r=await fetch('/api/market'); window.marketData=await r.json(); renderMarket(); } catch(e) {} }
+async function fetchHistory() { try { const r=await fetch('/api/data'); allHistory=await r.json(); renderHistory(); } catch(e) {} }
+async function fetchPortfolio() { try { const r=await fetch('/api/portfolio'); window.portfolioData=await r.json(); renderPortfolio(); } catch(e) {} }
+async function fetchSparklines() { try { const r=await fetch('/api/sparklines'); window.sparklineData=await r.json(); if(window.latestData) renderSparklines(); } catch(e) {} }
+
+async function fetchMarketStatus() {
+  try {
+    const r = await fetch('/api/market_status');
+    const d = await r.json();
+    const el = document.getElementById('market-status');
+    if (el) {
+      el.innerHTML = d.open ? 'OPEN' : 'CLOSED';
+      el.className = 'market-status ' + (d.open ? 'status-open' : 'status-closed');
+    }
+  } catch(e) {}
+}
+
+async function fetchSectors() {
+  try {
+    const r = await fetch('/api/sectors');
+    window.sectorMap = await r.json();
+    renderSectorTabs();
+  } catch(e) {}
+}
+
+function render() { renderTop3(); renderCards(); renderSidebar(); }
+
+function clean(sym) { return (sym||'').replace('.JK',''); }
+function companyEmoji(sym) { return COMPANY_EMOJI[clean(sym)] || '\u{1F3ED}'; }
+function trendEmoji(t) { return TREND_EMOJI[t] || ''; }
+function noteEmoji(n) { return NOTE_EMOJI[n] || ''; }
+function signalEmoji(s) { return s==='BUY'?'\u{1F7E2}':(s==='SELL'?'\u{1F534}':'\u{26AA}'); }
+function changeArrow(v) { if(v>0) return '\u{2191}'; if(v<0) return '\u{2193}'; return '\u{2192}'; }
+
+function renderMarket() {
+  const m = window.marketData || {};
+  const bar = document.getElementById('market-bar');
+  function item(label,emoji,data) {
+    if(!data) return '';
+    const cls = data.change >= 0 ? 'mkt-up' : 'mkt-down';
+    const arrow = data.change >= 0 ? '\u{25B2}' : '\u{25BC}';
+    return `<div class="mkt-item ${cls}"><span class="mkt-label">${emoji} ${label}</span><span class="mkt-price">${data.price.toLocaleString()}</span><span class="mkt-change">${arrow} ${data.change >= 0 ? '+' : ''}${data.change_pct.toFixed(2)}%</span></div>`;
+  }
+  bar.innerHTML = item('IHSG','\u{1F4C8}',m.ihsg) + item('USD/IDR','\u{1F4B1}',m.usd_idr);
+}
+
+async function fetchMarketLive() { try { const r=await fetch('/api/market_live'); window.marketLiveData=await r.json(); renderMarketChart(); } catch(e) {} }
+
+function switchMarketChart(type, btn) {
+  marketChartType = type;
+  document.querySelectorAll('#market-chart-section .btn[data-mkt]').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderMarketChart();
+}
+
+function renderMarketChart() {
+  if(marketChartInstance) { marketChartInstance.destroy(); marketChartInstance=null; }
+  const live = window.marketLiveData || {};
+  const data = live[marketChartType];
+  const labelEl = document.getElementById('mkt-live-label');
+  const priceEl = document.getElementById('mkt-live-price');
+  const changeEl = document.getElementById('mkt-live-change');
+  const statsEl = document.getElementById('mkt-live-stats');
+  const highEl = document.getElementById('mkt-live-high');
+  const lowEl = document.getElementById('mkt-live-low');
+  if(data && data.price) {
+    if(labelEl) labelEl.textContent = data.label || (marketChartType==='ihsg'?'IHSG':'USD/IDR');
+    if(priceEl) {
+      priceEl.textContent = data.price.toLocaleString();
+      priceEl.dataset.flashKey = 'mkt_' + marketChartType;
+      priceEl.dataset.flashVal = data.price;
+    }
+    if(changeEl) { const a=data.change>=0?'\u25B2':'\u25BC'; changeEl.textContent=a+' '+(data.change>=0?'+':'')+data.change_pct.toFixed(2)+'%'; changeEl.style.color=data.change>=0?'#34d399':'#fb7185'; }
+    if(statsEl) statsEl.style.display='flex';
+    if(highEl) highEl.textContent=data.high.toLocaleString();
+    if(lowEl) lowEl.textContent=data.low.toLocaleString();
+  }
+  if(!data||!data.prices||data.prices.length<2) return;
+  const canvas = document.getElementById('market-chart-canvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const first=data.prices[0].p, last=data.prices[data.prices.length-1].p, isUp=last>=first;
+  const lc=isUp?'#34d399':'#fb7185', fc=isUp?'rgba(52,211,153,0.1)':'rgba(251,113,133,0.1)';
+  marketChartInstance = new Chart(ctx, {
+    type:'line',
+    data:{ labels:data.prices.map(p=>p.t), datasets:[{ data:data.prices.map(p=>p.p), borderColor:lc, backgroundColor:fc, fill:true, tension:0.3, pointRadius:0, pointHitRadius:8, borderWidth:1.5 }] },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{display:false}, tooltip:{position:'nearest',backgroundColor:'rgba(11,10,16,0.9)',titleColor:'#f0eef8',bodyColor:'#b8b0d0',borderColor:'rgba(212,175,55,0.2)',borderWidth:1,cornerRadius:10,padding:10, callbacks:{title:function(i){return i[0].label},label:function(i){return (data.label||'')+': '+i.parsed.y.toLocaleString()}}} },
+      scales:{ x:{ display:true, ticks:{color:'#7a7298',font:{size:9},maxTicksLimit:6,maxRotation:0}, grid:{display:false} }, y:{ display:true, grace:'10%', ticks:{color:'#7a7298',font:{size:9},callback:function(v){return v.toLocaleString()}}, grid:{color:'rgba(212,175,55,0.06)',drawBorder:false} } },
+      interaction:{mode:'index',intersect:false}
+    }
+  });
+}
+
+function fetchWithTimeout(url,t) { return Promise.race([fetch(url).then(function(r){return r.json()}),new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'))},t)})]); }
+const COMPANY_FALLBACK_DATA = { name:'',sector:'-',industry:'-',marketCap:0,peRatio:0,eps:0,dividendYield:0,high52:0,low52:0,volume:0,avgVolume:0,website:'',previousClose:0,open:0 };
+
+function openModal(symbol) {
+  const modal=document.getElementById('modal'), body=document.getElementById('modal-body');
+  modal.style.display='flex'; document.body.style.overflow='hidden';
+  body.innerHTML=
+    '<div class="skeleton-header"><div class="skeleton-header-left"><div class="skeleton-icon"></div><div class="skeleton-header-text"><div class="skeleton-line title" style="width:120px"></div><div class="skeleton-line narrow" style="width:80px"></div></div></div><div class="skeleton-tag"></div></div>'+
+    '<div class="skeleton-grid"><div class="skeleton-section">'+
+    '<div class="skeleton-line title"></div><div class="skeleton-line wide"></div><div class="skeleton-line med"></div><div class="skeleton-line wide"></div><div class="skeleton-line narrow"></div>'+
+    '</div><div class="skeleton-section"><div class="skeleton-line title"></div><div class="skeleton-line wide"></div><div class="skeleton-line med"></div><div class="skeleton-line wide"></div><div class="skeleton-line narrow"></div>'+
+    '</div><div class="skeleton-section"><div class="skeleton-line title"></div><div class="skeleton-line wide"></div><div class="skeleton-line med"></div><div class="skeleton-line wide"></div>'+
+    '</div><div class="skeleton-section"><div class="skeleton-line title"></div><div class="skeleton-line wide"></div><div class="skeleton-line med"></div><div class="skeleton-line wide"></div>'+
+    '</div><div class="skeleton-section" style="grid-column:1/-1"><div class="skeleton-line title"></div><div class="skeleton-line wide"></div><div class="skeleton-line med"></div></div>'+
+    '</div>';
+  const cs=clean(symbol), TO=5000;
+  var sd={}, cd=JSON.parse(JSON.stringify(COMPANY_FALLBACK_DATA)); cd.name=COMPANY_NAME[cs]||cs;
+  var intra={prices:[],change:0,change_pct:0,high:0,low:0}, hist={prices:[],change:0,change_pct:0,high:0,low:0}, pred={prediction:null,target:0,direction:'neutral'};
+  function tryRender(){ const l=window.livePrices||{}; if(l[symbol]&&(!sd.price||sd.price===0)){sd.price=l[symbol].price;sd.change_pct=l[symbol].change_pct} renderModal(cs,cd,sd,intra,hist,pred); }
+  fetchWithTimeout('/api/latest',TO).then(function(d){var f=(d||[]).find(function(x){return x.symbol===symbol});if(f)sd=f}).catch(function(){}).then(function(){return fetchWithTimeout('/api/company/'+symbol,TO)}).then(function(d){if(d&&!d.error)cd=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/intraday/'+symbol,TO)}).then(function(d){if(d&&d.prices)intra=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/history_chart/'+symbol,TO)}).then(function(d){if(d&&d.prices)hist=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/predictions/'+symbol,TO)}).then(function(d){if(d&&d.prediction!==undefined)pred=d}).catch(function(){}).then(function(){tryRender()});
+  setTimeout(function(){if(body.innerHTML==='<div class="modal-loading">Memuat data...</div>')tryRender()},TO+500);
+}
+
+function closeModal(e) { if(e&&e.target!==document.getElementById('modal')) return; document.getElementById('modal').style.display='none'; document.body.style.overflow=''; }
+
+function renderModal(sym,company,stock,intraday,histChart,predictions) {
+  const emoji=COMPANY_EMOJI[sym]||'\u{1F3ED}', name=company.name||COMPANY_NAME[sym]||sym, sector=company.sector||'-', industry=company.industry||'-';
+  function fmt(n){if(!n||n===0)return'-';if(n>=1e12)return(n/1e12).toFixed(2)+' T';if(n>=1e9)return(n/1e9).toFixed(2)+' M';if(n>=1e6)return(n/1e6).toFixed(2)+' Jt';return n.toLocaleString()}
+  const sigCls=stock.signal==='BUY'?'tag-buy':(stock.signal==='SELL'?'tag-sell':'tag-hold'), sigEmoji=signalEmoji(stock.signal), chartId='chart-'+Date.now();
+  let intraHtml=''; const prices=(intraday&&intraday.prices)||[];
+  if(prices.length>1) {
+    const ic=intraday.change>=0?'up':'down', a=intraday.change>=0?'\u{25B2}':'\u{25BC}';
+    intraHtml=`<div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Pergerakan Hari Ini <span class="${ic}" style="float:right">${a} ${intraday.change>=0?'+':''}${intraday.change_pct.toFixed(2)}%</span></div><div style="position:relative"><canvas id="${chartId}" height="180"></canvas></div><div class="intra-stats"><span>Tertinggi: <span class="up">Rp ${(intraday.high||0).toLocaleString()}</span></span><span>Terendah: <span class="down">Rp ${(intraday.low||0).toLocaleString()}</span></span><span>Tutup: Rp ${(prices[prices.length-1].price||0).toLocaleString()}</span></div></div>`;
+  }
+  document.getElementById('modal-body').innerHTML = `
+    <div class="modal-header">
+      <div class="modal-title"><span class="modal-emoji">${emoji}</span><div><div class="modal-sym">${sym}</div><div class="modal-name">${name}</div></div></div>
+      <span class="tag ${sigCls}" style="font-size:0.95rem;padding:6px 18px">${sigEmoji} ${stock.signal||'HOLD'}</span>
+    </div>
+    <div class="modal-grid">
+      <div class="modal-section"><div class="modal-section-title">Perusahaan</div>
+        <div class="modal-row"><span>Sektor</span><span>${sector}</span></div>
+        <div class="modal-row"><span>Industri</span><span>${industry}</span></div>
+        <div class="modal-row"><span>Kapitalisasi</span><span>${fmt(company.marketCap)}</span></div>
+        <div class="modal-row"><span>P/E Ratio</span><span>${company.peRatio?company.peRatio.toFixed(2):'-'}</span></div>
+        <div class="modal-row"><span>EPS</span><span>${company.eps?'Rp '+company.eps.toLocaleString():'-'}</span></div>
+        <div class="modal-row"><span>Dividen</span><span>${company.dividendYield?(company.dividendYield*100).toFixed(2)+'%':'-'}</span></div>
+      </div>
+      <div class="modal-section"><div class="modal-section-title">Harga</div>
+        <div class="modal-row"><span>Saat Ini</span><span style="font-weight:800;font-size:1.1rem;color:var(--accent-light)">Rp ${(stock.price||0).toLocaleString()}</span></div>
+        <div class="modal-row"><span>Perubahan</span><span class="${(stock.change_pct||0)>0?'up':'down'}">${changeArrow(stock.change_pct)} ${stock.change_pct>0?'+':''}${stock.change_pct||0}%</span></div>
+        <div class="modal-row"><span>Pembukaan</span><span>${company.open?'Rp '+company.open.toLocaleString():'-'}</span></div>
+        <div class="modal-row"><span>Sebelumnya</span><span>${company.previousClose?'Rp '+company.previousClose.toLocaleString():'-'}</span></div>
+        <div class="modal-row"><span>52W Tertinggi</span><span>${company.high52?'Rp '+company.high52.toLocaleString():'-'}</span></div>
+        <div class="modal-row"><span>52W Terendah</span><span>${company.low52?'Rp '+company.low52.toLocaleString():'-'}</span></div>
+        <div class="modal-row"><span>Volume</span><span>${fmt(company.volume)}</span></div>
+        <div class="modal-row"><span>Rerata Volume</span><span>${fmt(company.avgVolume)}</span></div>
+      </div>
+      <div class="modal-section"><div class="modal-section-title">Analisis Teknikal</div>
+        <div class="modal-row"><span>Tren</span><span>${trendEmoji(stock.trend)} ${stock.trend||'-'}</span></div>
+        <div class="modal-row"><span>Keterangan</span><span>${noteEmoji(stock.note)} ${stock.note||'-'}</span></div>
+        <div class="modal-row"><span>Skor</span><span class="score-${stock.score>0?'pos':(stock.score<0?'neg':'zero')}">${stock.score>0?'+':''}${stock.score||0}</span></div>
+        <div class="modal-row"><span>Keyakinan</span><span>${stock.confidence||50}%</span></div>
+        <div class="modal-row"><span style="width:100%"><div class="conf-bar"><div class="conf-fill" style="width:${stock.confidence||50}%"></div></div></span></div>
+        <div class="modal-row"><span>Posisi Range</span><span>${stock.position?(stock.position*100).toFixed(0)+'%':'-'}</span></div>
+        <div class="modal-row"><span>RSI (14)</span><span>${stock.rsi||'-'}</span></div>
+        <div class="modal-row"><span>MA (20)</span><span>Rp ${(stock.ma20||0).toLocaleString()}</span></div>
+        <div class="modal-row"><span>ATR (14)</span><span>${stock.atr||'-'}</span></div>
+      </div>
+      <div class="modal-section"><div class="modal-section-title">Support &amp; Resistance</div>
+        <div class="modal-row"><span>Resistance (TP)</span><span style="color:#34d399">Rp ${(stock.sell||0).toLocaleString()}</span></div>
+        <div class="modal-row"><span>Support (SL)</span><span style="color:#fb7185">Rp ${(stock.sl||0).toLocaleString()}</span></div>
+        <div class="modal-row"><span>Entry Area</span><span style="color:#60a5fa">Rp ${(stock.buy||0).toLocaleString()}</span></div>
+        <div class="modal-row"><span>Risk/Reward</span><span>${stock.rr||'-'}</span></div>
+        <div class="modal-row"><span>Range 52W</span><span>${company.high52?'Rp'+company.high52.toLocaleString():'-'} / ${company.low52?'Rp'+company.low52.toLocaleString():'-'}</span></div>
+      </div>
+      ${intraHtml}
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Rekomendasi AI</div><div class="reasoning-text">${stock.reasoning||'Belum ada analisis AI.'}</div></div>
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Prediksi 5 Hari</div>
+        <div class="pred-box">${predictions&&predictions.prediction?`<span class="pred-direction ${predictions.direction==='up'?'up':'down'}">${predictions.direction==='up'?'\u{1F7E2}':'\u{1F534}'} ${predictions.direction==='up'?'Bullish':'Bearish'}</span><span class="pred-target">Target: Rp ${predictions.prediction.toLocaleString()}</span><span class="pred-change ${predictions.change_pct>0?'up':'down'}">${predictions.change_pct>0?'+':''}${predictions.change_pct}%</span>`:'<span class="pred-na">Data tidak mencukupi</span>'}</div>
+      </div>
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Pergerakan 3 Bulan <span id="hist-chart-change" style="float:right;font-size:0.85rem"></span></div><div style="position:relative"><canvas id="hist-${chartId}" height="140"></canvas></div></div>
+    </div>
+    ${company.website?'<div class="modal-website"><a href="'+company.website+'" target="_blank" rel="noopener">'+company.website+'</a></div>':''}`;
+  const hp=(histChart&&histChart.prices)||[];
+  if(hp.length>1) {
+    setTimeout(function(){
+      const c=document.getElementById('hist-'+chartId); if(!c) return;
+      const ctx=c.getContext('2d'), f=hp[0].close,l=hp[hp.length-1].close,u=l>=f,lc=u?'#34d399':'#fb7185',fc=u?'rgba(52,211,153,0.1)':'rgba(251,113,133,0.1)';
+      const chg=document.getElementById('hist-chart-change');
+      if(chg){const a=histChart.change>=0?'\u25B2':'\u25BC';chg.innerHTML=a+' '+(histChart.change>=0?'+':'')+histChart.change_pct.toFixed(2)+'%';chg.style.color=histChart.change>=0?'#34d399':'#fb7185';}
+      new Chart(ctx,{type:'line',data:{labels:hp.map(p=>p.date),datasets:[{data:hp.map(p=>p.close),borderColor:lc,backgroundColor:fc,fill:true,tension:0.3,pointRadius:0,pointHitRadius:8,borderWidth:1.5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(11,10,16,0.9)',titleColor:'#f0eef8',bodyColor:'#b8b0d0',borderColor:'rgba(212,175,55,0.2)',borderWidth:1,cornerRadius:10,padding:8,callbacks:{title:function(i){return i[0].label},label:function(i){return 'Rp '+i.parsed.y.toLocaleString()}}}},scales:{x:{display:true,ticks:{color:'#7a7298',font:{size:8},maxTicksLimit:6,maxRotation:0},grid:{display:false}},y:{display:true,ticks:{color:'#7a7298',font:{size:8},callback:function(v){return 'Rp'+v.toLocaleString()}},grid:{color:'rgba(212,175,55,0.06)',drawBorder:false}}},interaction:{intersect:false,mode:'index'}}});
+    },100);
+  }
+  if(prices.length>1) {
+    setTimeout(function(){
+      const c=document.getElementById(chartId); if(!c) return;
+      const ctx=c.getContext('2d'), u=intraday.change>=0,lc=u?'#34d399':'#fb7185',fc=u?'rgba(52,211,153,0.1)':'rgba(251,113,133,0.1)';
+      new Chart(ctx,{type:'line',data:{labels:prices.map(p=>p.time),datasets:[{data:prices.map(p=>p.price),borderColor:lc,backgroundColor:fc,fill:true,tension:0.3,pointRadius:0,pointHitRadius:10,borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{backgroundColor:'rgba(11,10,16,0.9)',titleColor:'#f0eef8',bodyColor:'#b8b0d0',borderColor:'rgba(212,175,55,0.2)',borderWidth:1,cornerRadius:10,padding:10,callbacks:{title:function(i){return i[0].label},label:function(i){return 'Rp '+i.parsed.y.toLocaleString()}}}},scales:{x:{display:true,ticks:{color:'#7a7298',font:{size:9},maxTicksLimit:8,maxRotation:0},grid:{display:false}},y:{display:true,ticks:{color:'#7a7298',font:{size:9},callback:function(v){return 'Rp'+v.toLocaleString()}},grid:{color:'rgba(212,175,55,0.06)',drawBorder:false}}},interaction:{intersect:false,mode:'index'}}});
+    },50);
+  }
+}
+
+/* ===== TOP 3 ===== */
+function renderTop3() {
+  const latest = window.latestData || [];
+  const top3 = latest.filter(d=>d.is_top3).sort((a,b)=>b.score-a.score);
+  const grid = document.getElementById('top3-grid');
+  if(!top3.length) { grid.innerHTML='<div class="empty">Belum ada data. Jalankan <b>python app.py</b></div>'; return; }
+  let html = '';
+  for(const d of top3) {
+    const live=window.livePrices||{}, ld=live[d.symbol], lp=ld?ld.price:d.price, lc=ld?ld.change_pct:(d.change_pct||0);
+    const cls=d.signal==='BUY'?'buy':(d.signal==='SELL'?'sell':'hold'), medal=d.rank===1?'\u{1F947}':(d.rank===2?'\u{1F948}':'\u{1F949}');
+    html += `<div class="top3-card ${cls}" onclick="openModal('${d.symbol}')"><div class="top3-rank">${medal}</div><div class="top3-sym">${companyEmoji(d.symbol)} ${clean(d.symbol)}</div><div class="top3-signal">${signalEmoji(d.signal)} ${d.signal}</div><div class="top3-price" data-flash-key="top3-${d.symbol}" data-flash-val="${lp}">Rp ${lp.toLocaleString()}</div><div class="top3-detail">${trendEmoji(d.trend)} ${d.trend} ${changeArrow(lc)} ${lc>0?'+':''}${lc}%</div><div class="top3-note">${noteEmoji(d.note)} ${d.note}</div></div>`;
+  }
+  grid.innerHTML = html;
+}
+
+/* ===== SECTOR TABS ===== */
+function renderSectorTabs() {
+  const map = window.sectorMap || {};
+  const sectors = [...new Set(Object.values(map))].sort();
+  const labelMap = SECTOR_MAP_LABEL;
+  let html = `<button class="sector-tab active" data-sector="all" onclick="setSector('all', this)">Semua</button>`;
+  const seen = new Set();
+  for(const s of sectors) {
+    const lbl = labelMap[s] || s;
+    if (seen.has(lbl)) continue;
+    seen.add(lbl);
+    html += `<button class="sector-tab" data-sector="${s}" onclick="setSector('${s}', this)">${lbl}</button>`;
+  }
+  document.getElementById('sector-tabs').innerHTML = html;
+}
+function setSector(sector, btn) {
+  currentSector = sector;
+  currentPage = 1;
+  document.querySelectorAll('.sector-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderCards();
+}
+
+/* ===== SEARCH ===== */
+function setSearch(val) {
+  searchText = val.toLowerCase().trim();
+  currentPage = 1;
+  renderCards();
+}
+
+/* ===== PAGINATION ===== */
+function goToPage(page, btn) {
+  currentPage = page;
+  renderCards();
+}
+
+function renderPagination(total) {
+  const totalPages = Math.ceil(total / PER_PAGE);
+  const el = document.getElementById('pagination');
+  if(totalPages <= 1) { el.innerHTML = ''; return; }
+  let html = '';
+  html += `<button class="btn" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}>&laquo;</button>`;
+  for(let i = 1; i <= totalPages; i++) {
+    if(i === currentPage || i === 1 || i === totalPages || Math.abs(i - currentPage) <= 1) {
+      html += `<button class="btn ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i}, this)">${i}</button>`;
+    } else if(i === currentPage - 2 || i === currentPage + 2) {
+      html += `<span class="info">...</span>`;
+    }
+  }
+  html += `<button class="btn" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}>&raquo;</button>`;
+  el.innerHTML = html;
+}
+
+/* ===== RENDER CARDS ===== */
+function switchView(mode, btn) {
+  viewMode = mode;
+  document.querySelectorAll('.view-toggle .btn').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  const grid = document.getElementById('signal-grid');
+  grid.className = 'grid' + (mode==='compact'?' grid-compact':'');
+  if (mode === 'compact') {
+    document.getElementById('main-layout-id').classList.add('compact-mode');
+  } else {
+    document.getElementById('main-layout-id').classList.remove('compact-mode');
+  }
+  renderCards();
+}
+
+function getFilteredData() {
+  const all = window.latestData || [];
+  let filtered = all;
+  if(currentSector !== 'all' && window.sectorMap) {
+    filtered = filtered.filter(d => window.sectorMap[d.symbol] === currentSector);
+  }
+  if(searchText) {
+    filtered = filtered.filter(d => clean(d.symbol).toLowerCase().includes(searchText) || (COMPANY_NAME[clean(d.symbol)]||'').toLowerCase().includes(searchText));
+  }
+  return filtered;
+}
+
+function renderCards() {
+  const filtered = getFilteredData();
+  const total = filtered.length;
+  document.getElementById('search-count').textContent = `Menampilkan ${total} saham`;
+  renderPagination(total);
+  const start = (currentPage - 1) * PER_PAGE;
+  const pageItems = filtered.slice(start, start + PER_PAGE);
+  const grid = document.getElementById('signal-grid');
+  if(!pageItems.length) { grid.innerHTML='<div class="empty">Tidak ada saham ditemukan</div>'; return; }
+  const sorted = [...pageItems].sort((a,b)=>b.score-a.score);
+  const sp = window.sparklineData || {};
+  const isCompact = viewMode === 'compact';
+  const live = window.livePrices || {};
+  let html = '';
+  for(const d of sorted) {
+    const sym=d.symbol, ld=live[sym], lp=ld?ld.price:d.price, lc=ld?ld.change_pct:(d.change_pct||0);
+    const cls=d.signal==='BUY'?'card-buy':(d.signal==='SELL'?'card-sell':'card-hold');
+    const star=d.is_top3?'\u{2B50} ':'', cc=lc>0?'up':(lc<0?'down':'');
+    const isAlert=d.signal==='BUY'||d.signal==='SELL'||Math.abs(d.score||0)>=2;
+    const sw=Math.min(Math.abs(d.score||0)/3*100,100), sc=(d.score||0)>0?'str-bullish':((d.score||0)<0?'str-bearish':'str-neutral');
+    const showStr=Math.abs(d.score||0)>0, spData=sp[sym], sec=window.sectorMap?window.sectorMap[sym]:'';
+    html += `<div class="card ${cls} ${isAlert?'card-alert':''}" onclick="openModal('${d.symbol}')" style="animation-delay:${(html.split('<div').length-1)*0.03}s">
+      ${isAlert?'<div class="alert-dot"></div>':''}
+      <div class="card-header"><span class="symbol">${star}${companyEmoji(d.symbol)} ${clean(d.symbol)}</span><span class="tag tag-${d.signal.toLowerCase()}">${signalEmoji(d.signal)} ${d.signal}</span></div>
+      <div class="card-body${isCompact?' card-body-compact':''}">
+        <div class="row"><span class="label">Harga</span><span class="value" data-flash-key="price-${d.symbol}" data-flash-val="${lp}">Rp ${lp.toLocaleString()}</span><span class="change ${cc}">${changeArrow(lc)} ${lc>0?'+':''}${lc}%</span></div>
+        ${sec?`<div class="row"><span class="label">Sektor</span><span class="value" style="font-size:0.78rem;color:var(--text-muted)">${sec}</span></div>`:''}
+        ${isCompact?'':`<div class="row"><span class="label">Tren</span><span class="value">${trendEmoji(d.trend)} ${d.trend||'-'}</span></div>
+        <div class="row"><span class="label">Keterangan</span><span class="value note-${d.note==='Rebound'?'rebound':(d.note==='Accumulation'?'accum':(d.note==='Take Profit'?'tp':''))}">${noteEmoji(d.note)} ${d.note||'-'}</span></div>
+        <div class="row"><span class="label">Skor</span><span class="value score-${d.score>0?'pos':(d.score<0?'neg':'zero')}">${d.score>0?'+':''}${d.score}</span></div>
+        <div class="row"><span class="label">Keyakinan</span><span class="value">${d.confidence||50}%</span></div>`}
+        ${showStr?`<div class="row str-row"><span class="label">Kekuatan</span><span class="value str-bar-wrap"><span class="str-bar ${sc}" style="width:${sw}%"></span></span></div>`:''}
+        <div class="row"><span class="label">RSI</span><span class="value">${d.rsi||'-'}</span></div>
+        ${isCompact?'':`<div class="row"><span class="label">MA20</span><span class="value">Rp ${(d.ma20||0).toLocaleString()}</span></div>
+        <div class="row"><span class="label">TP / SL</span><span class="value">Rp ${(d.sell||0).toLocaleString()} / Rp ${(d.sl||0).toLocaleString()}</span></div>`}
+        ${spData?`<div class="sparkline-wrap"><canvas class="spark-canvas" data-sym="${d.symbol}" width="280" height="40"></canvas></div>`:''}
+        <div class="row"><span class="label">Waktu</span><span class="value time">${d.time||'-'}</span></div>
+      </div>
+    </div>`;
+  }
+  grid.innerHTML = html;
+  renderSparklines();
+  applyFlashEffects();
+}
+
+function renderSparklines() {
+  const sp = window.sparklineData || {};
+  document.querySelectorAll('.spark-canvas').forEach(function(canvas) {
+    const sym=canvas.getAttribute('data-sym'), data=sp[sym];
+    if(!data||!data.prices||data.prices.length<3) return;
+    const ctx=canvas.getContext('2d'), w=canvas.width, h=canvas.height, prices=data.prices;
+    const mn=Math.min(...prices), mx=Math.max(...prices), rng=mx-mn||1, isUp=data.change_pct>=0, color=isUp?'#34d399':'#fb7185';
+    ctx.clearRect(0,0,w,h); ctx.beginPath();
+    for(let i=0;i<prices.length;i++){const x=(i/(prices.length-1))*w,y=h-((prices[i]-mn)/rng)*(h-4)-2;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.strokeStyle=color; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();
+    ctx.fillStyle=isUp?'rgba(52,211,153,0.06)':'rgba(251,113,133,0.06)'; ctx.fill();
+  });
+}
+
+/* ===== SIDEBAR ===== */
+function renderSidebar() {
+  const latest = window.latestData || [];
+  const live = window.livePrices || {};
+  if (!latest.length) return;
+  const withPrices = latest.map(d => {
+    const ld = live[d.symbol];
+    return { ...d, price: ld ? ld.price : d.price, change_pct: ld ? ld.change_pct : (d.change_pct || 0) };
+  });
+  const sorted = [...withPrices].sort((a, b) => (b.change_pct || 0) - (a.change_pct || 0));
+  const gainers = sorted.filter(d => (d.change_pct || 0) > 0).slice(0, 3);
+  const losers = sorted.filter(d => (d.change_pct || 0) < 0).slice(-3).reverse();
+
+  const gHtml = gainers.length ? gainers.map(d =>
+    `<div class="sidebar-item"><span class="sym">${companyEmoji(d.symbol)} ${clean(d.symbol)}</span><span class="price">Rp${d.price.toLocaleString()}</span><span class="chg up">+${d.change_pct.toFixed(2)}%</span></div>`
+  ).join('') : '<div class="empty" style="padding:8px 0">Tidak ada</div>';
+  document.getElementById('sidebar-gainers').innerHTML = gHtml;
+
+  const lHtml = losers.length ? losers.map(d =>
+    `<div class="sidebar-item"><span class="sym">${companyEmoji(d.symbol)} ${clean(d.symbol)}</span><span class="price">Rp${d.price.toLocaleString()}</span><span class="chg down">${d.change_pct.toFixed(2)}%</span></div>`
+  ).join('') : '<div class="empty" style="padding:8px 0">Tidak ada</div>';
+  document.getElementById('sidebar-losers').innerHTML = lHtml;
+
+  const bullish = sorted.filter(d => (d.change_pct || 0) > 0).length;
+  const bearish = sorted.filter(d => (d.change_pct || 0) < 0).length;
+  const neutral = sorted.length - bullish - bearish;
+  document.getElementById('sidebar-sentiment').innerHTML =
+    `<div class="sidebar-sentiment">
+      <div class="sentiment-item bullish"><span class="sentiment-count">${bullish}</span>Bullish</div>
+      <div class="sentiment-item bearish"><span class="sentiment-count">${bearish}</span>Bearish</div>
+      <div class="sentiment-item neutral"><span class="sentiment-count">${neutral}</span>Netral</div>
+    </div>`;
+}
+
+/* ===== HISTORY ===== */
+function renderHistory() {
+  let filtered;
+  if(currentFilter==='buy') filtered=window.buyData||[];
+  else if(currentFilter==='sell') filtered=window.sellData||[];
+  else filtered=allHistory;
+  const grid=document.getElementById('history-grid');
+  if(!filtered.length) { grid.innerHTML='<div class="empty">Belum ada riwayat transaksi</div>'; return; }
+  const lo={};
+  for(const d of filtered){const s=d.symbol;if(!lo[s]||d.time>lo[s].time)lo[s]=d;}
+  const entries=Object.values(lo).sort((a,b)=>b.score-a.score);
+  let html='';
+  for(const d of entries){
+    const sd=d.signal==='BUY'?'timeline-buy':(d.signal==='SELL'?'timeline-sell':'timeline-hold'), si=signalEmoji(d.signal);
+    html+=`<div class="timeline-card" onclick="openModal('${d.symbol}')"><div class="timeline-dot ${sd}">${si}</div><div class="timeline-body"><div class="timeline-header"><span class="symbol">${companyEmoji(d.symbol)} ${clean(d.symbol)}</span><span class="tag tag-${d.signal.toLowerCase()}">${d.signal}</span></div><div class="timeline-meta"><span>Rp ${(d.price||0).toLocaleString()}</span><span>${trendEmoji(d.trend)} ${d.trend}</span><span class="score-${d.score>0?'pos':(d.score<0?'neg':'zero')}">${d.score>0?'+':''}${d.score}</span><span class="time">${d.time||'-'}</span></div></div></div>`;
+  }
+  grid.innerHTML=html;
+}
+
+/* ===== PORTFOLIO ===== */
+function renderPortfolio() {
+  const grid=document.getElementById('portfolio-grid'), data=window.portfolioData||[];
+  if(!data||!data.length) { grid.innerHTML='<div class="empty">Belum ada portofolio. Tambahkan saham untuk mulai melacak.</div>'; return; }
+  const latest=window.latestData||[], live=window.livePrices||{};
+  let html='';
+  for(const p of data){
+    const sym=(p.symbol||'').includes('.JK')?p.symbol:p.symbol+'.JK', a=latest.find(d=>d.symbol===sym)||{}, ld=live[sym];
+    const lp=ld?ld.price:(a.price||0), lc=ld?ld.change_pct:(a.change_pct||0), cc=lc>0?'up':(lc<0?'down':'');
+    const pnl=p.entry_price?((lp||p.entry_price)-p.entry_price)/p.entry_price*100:0, pc=pnl>0?'up':(pnl<0?'down':'');
+    html+=`<div class="card card-hold" onclick="openModal('${sym}')"><div class="card-header"><span class="symbol">${companyEmoji(sym)} ${clean(sym)}</span><span class="tag tag-hold">\u{1F4CB} ${p.lot||'-'} lot</span></div><div class="card-body"><div class="row"><span class="label">Entry</span><span class="value">Rp ${(p.entry_price||0).toLocaleString()}</span></div><div class="row"><span class="label">Harga</span><span class="value" data-flash-key="port-${sym}" data-flash-val="${lp}">Rp ${lp.toLocaleString()}</span><span class="change ${cc}">${changeArrow(lc)} ${lc>0?'+':''}${lc}%</span></div><div class="row"><span class="label">P&amp;L</span><span class="value ${pc}">${pnl>0?'+':''}${pnl.toFixed(2)}%</span></div><div class="row"><span class="label">Keterangan</span><span class="value">${noteEmoji(a.note)} ${a.note||'-'}</span></div></div></div>`;
+  }
+  grid.innerHTML=html||'<div class="empty">Belum ada portofolio.</div>';
+}
+
+async function deleteAll() { if(!confirm('Hapus semua riwayat?')) return; await fetch('/api/delete_all',{method:'DELETE'}); fetchData(); fetchHistory(); }
+document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeDailySummary();}});
+
+/* ===== NEWS SIDEBAR ===== */
+async function fetchNews() {
+  try {
+    const r = await fetch('/api/news');
+    const data = await r.json();
+    if (!data || !data.length) {
+      document.getElementById('sidebar-news').innerHTML = '<div class="empty" style="padding:12px 0">Belum ada berita</div>';
+      return;
+    }
+    const el = document.getElementById('sidebar-news');
+    let html = '';
+    for (const item of data.slice(0, 8)) {
+      html += `<div class="sidebar-item" style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span style="font-size:0.75rem;font-weight:600;color:var(--text-primary);line-height:1.3">${item.title}</span>
+        <span style="font-size:0.65rem;color:var(--text-muted)">${item.symbol||''} &middot; ${item.publisher||''}</span>
+      </div>`;
+    }
+    el.innerHTML = html;
+  } catch(e) {}
+}
+
+/* ===== DAILY SUMMARY ===== */
+function showDailySummary() {
+  const modal = document.getElementById('daily-summary-modal');
+  const body = document.getElementById('daily-summary-body');
+  modal.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  body.innerHTML = '<div class="modal-loading">Memuat ringkasan harian...</div>';
+
+  fetch('/api/daily-summary')
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.summary) {
+        const lines = data.summary.split('\n').map(l => l.trim()).filter(l => l);
+        let html = '<div class="modal-header" style="padding-bottom:14px"><div class="modal-title"><div><div class="modal-sym" style="font-size:1.2rem">\u{1F4CA} Ringkasan Penutupan Pasar</div><div class="modal-name">' + (data.date || '-') + '</div></div></div></div>';
+        html += '<div class="modal-grid" style="grid-template-columns:1fr;padding:8px 28px 24px">';
+        html += '<div class="modal-section" style="grid-column:1/-1"><div class="reasoning-text" style="white-space:pre-line;font-size:0.9rem;line-height:1.7">' + data.summary + '</div></div>';
+        html += '</div>';
+        body.innerHTML = html;
+      } else {
+        body.innerHTML = '<div class="modal-header" style="padding-bottom:14px"><div class="modal-title"><div><div class="modal-sym" style="font-size:1.2rem">\u{1F4CA} Ringkasan Harian</div></div></div></div><div class="modal-grid" style="grid-template-columns:1fr;padding:28px"><div class="empty">Ringkasan belum tersedia. Tunggu hingga pasar tutup (16:00 WIB) untuk laporan otomatis.</div></div>';
+      }
+    })
+    .catch(() => {
+      body.innerHTML = '<div class="modal-loading">Gagal memuat ringkasan.</div>';
+    });
+}
+
+function closeDailySummary(e) {
+  if (e && e.target !== document.getElementById('daily-summary-modal')) return;
+  document.getElementById('daily-summary-modal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+/* ===== MARKET DATA (30s refresh) ===== */
+let marketDataRefreshInterval = null;
+let lastMarketDataHash = '';
+
+async function fetchMarketData() {
+  try {
+    const r = await fetch('/api/market-data');
+    const d = await r.json();
+    if (d.news && d.news.length) {
+      window.latestNews = d.news;
+      fetchNews();
+    }
+    if (d.prices) {
+      window.livePrices = d.prices;
+      if (window.latestData) { renderCards(); renderTop3(); renderPortfolio(); renderSidebar(); }
+      buildTickerItems();
+      applyFlashEffects(d.prices);
+    }
+    if (d.status) {
+      const el = document.getElementById('market-status');
+      if (el) {
+        el.innerHTML = d.status.open ? 'OPEN' : 'CLOSED';
+        el.className = 'market-status ' + (d.status.open ? 'status-open' : 'status-closed');
+      }
+      document.getElementById('live-status').textContent = 'Memantau 20 saham unggulan Indonesia secara real-time \u2022 ' + d.status.date + ' ' + d.status.time + ' WIB';
+    }
+  } catch(e) {}
+}
+
+setInterval(fetchLivePrices, 5000);
+setInterval(fetchMarketData, 30000);
+setInterval(fetchData, 10000);
+setInterval(fetchMarket, 15000);
+setInterval(fetchMarketLive, 15000);
+setInterval(fetchHistory, 15000);
+setInterval(fetchPortfolio, 15000);
+setInterval(fetchSparklines, 30000);
+fetchLivePrices(); fetchMarketData(); fetchData(); fetchMarket(); fetchMarketLive();
+fetchHistory(); fetchPortfolio(); fetchSparklines(); fetchSectors(); fetchNews();
+</script>
+</body>
+</html>
