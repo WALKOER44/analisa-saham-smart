@@ -759,6 +759,19 @@ def api_daily_summary_get():
                 })
     except Exception as e:
         print(f"[DAILY SUMMARY] File read error: {e}")
+
+    try:
+        fallback_text = generate_daily_summary()
+        if fallback_text:
+            today = datetime.now().strftime("%Y-%m-%d")
+            return jsonify({
+                "summary": fallback_text,
+                "date": today,
+                "generated": True
+            })
+    except Exception as e:
+        print(f"[DAILY SUMMARY] Fallback generation error: {e}")
+
     return jsonify({
         "summary": "",
         "date": "",
@@ -789,38 +802,49 @@ def generate_daily_summary():
         lines = [f"\U0001f4ca **RINGKASAN PENUTUPAN PASAR HARIAN - ANALISA SAHAM SMART**"]
         lines.append(f"\U0001f5d3 Tanggal: {now.strftime('%d %B %Y')}")
         lines.append("")
-        lines.append("\U0001f4c8 **Performa IHSG:**")
         if ihsg_data:
             arrow = "\U0001f7e2" if ihsg_data["change_pct"] >= 0 else "\U0001f534"
-            lines.append(f"{arrow} IHSG: {ihsg_data['price']:,.0f} ({ihsg_data['change_pct']:+.2f}%)")
+            lines.append(f"{arrow} **IHSG:** {ihsg_data['price']:,.0f} ({ihsg_data['change_pct']:+.2f}%)")
+        else:
+            lines.append("\u26a0 Data IHSG tidak tersedia saat ini.")
         lines.append("")
 
-        lines.append("\U0001f4c8 **Performa Saham & Analisis:**")
-        for r in gainers:
-            sym = r.get("symbol", "").replace(".JK", "")
-            lines.append(f"\u2022 {sym}: Naik {r.get('change_pct', 0):+.2f}% - {r.get('note', '')} (skor: {r.get('score', 0):+d})")
-        for r in losers:
-            sym = r.get("symbol", "").replace(".JK", "")
-            lines.append(f"\u2022 {sym}: Turun {r.get('change_pct', 0):+.2f}% - {r.get('note', '')} (skor: {r.get('score', 0):+d})")
+        if gainers:
+            lines.append("\U0001f4c8 **Top Gainers:**")
+            for r in gainers:
+                sym = r.get("symbol", "").replace(".JK", "")
+                lines.append(f"\u2022 {sym}: Naik {r.get('change_pct', 0):+.2f}%")
+
+        if losers:
+            lines.append("\U0001f4c9 **Top Losers:**")
+            for r in losers:
+                sym = r.get("symbol", "").replace(".JK", "")
+                lines.append(f"\u2022 {sym}: Turun {r.get('change_pct', 0):+.2f}%")
         lines.append("")
 
-        lines.append("\U0001f4a1 **Rekomendasi & Jangka Waktu:**")
         if top3:
+            lines.append("\U0001f4a1 **Rekomendasi:**")
             for r in top3[:3]:
                 sym = r.get("symbol", "").replace(".JK", "")
                 sig = r.get("signal", "HOLD")
+                score = r.get("score", 0)
                 tp = r.get("sell", 0)
-                reason = r.get("reasoning", "")[:100]
-                lines.append(f"\u2022 {sym}: Status **{sig}** (Target: Rp{tp:,.0f}) - {reason}")
+                lines.append(f"\u2022 {sym}: **{sig}** (skor: {score:+d}, target: Rp{tp:,.0f})")
         else:
-            lines.append("\u2022 Belum ada data rekomendasi untuk hari ini.")
+            lines.append("\U0001f4a1 Belum ada rekomendasi saham terbaru.")
         lines.append("")
 
-        ihsg_trend = "positif" if ihsg_data.get("change_pct", 0) >= 0 else "negatif"
-        bullish_count = sum(1 for d in data if d.get("change_pct", 0) > 0)
-        bearish_count = sum(1 for d in data if d.get("change_pct", 0) < 0)
-        lines.append("\U0001f52e **Proyeksi Esok Hari:**")
-        lines.append(f"Sentimen pasar hari ini cenderung {'bullish' if bullish_count > bearish_count else 'bearish'} ({bullish_count} naik vs {bearish_count} turun). IHSG ditutup {ihsg_trend}. Disarankan strategi konservatif dengan selektif memilih saham berfundamental kuat. Pantau pergerakan nilai tukar USD/IDR dan berita global untuk antisipasi reversal.")
+        if data:
+            bullish_count = sum(1 for d in data if d.get("change_pct", 0) > 0)
+            bearish_count = sum(1 for d in data if d.get("change_pct", 0) < 0)
+            total = len(data)
+            lines.append("\U0001f52e **Ringkasan Pasar:**")
+            lines.append(f"Bullish: {bullish_count} | Bearish: {bearish_count} | Total: {total} saham")
+            if ihsg_data:
+                trend = "positif" if ihsg_data.get("change_pct", 0) >= 0 else "negatif"
+                lines.append(f"IHSG ditutup {trend}. Disarankan strategi konservatif.")
+        else:
+            lines.append("\U0001f52e Data analisis belum tersedia. Jalankan analisis terlebih dahulu.")
 
         text = "\n".join(lines)
         DAILY_SUMMARY_CACHE["text"] = text
