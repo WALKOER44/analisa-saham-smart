@@ -699,15 +699,16 @@ async function fetchNews() {
   try {
     const r = await fetch('/api/news');
     const data = await r.json();
+    const el = document.getElementById('sidebar-news');
     if (!data || !data.length) {
-      document.getElementById('sidebar-news').innerHTML = '<div class="empty" style="padding:12px 0">Belum ada berita</div>';
+      el.innerHTML = '<div class="empty" style="padding:12px 0">Belum ada berita</div>';
       return;
     }
-    const el = document.getElementById('sidebar-news');
     let html = '';
     for (const item of data.slice(0, 8)) {
-      html += `<div class="sidebar-item" style="flex-direction:column;align-items:flex-start;gap:2px">
-        <span style="font-size:0.75rem;font-weight:600;color:var(--text-primary);line-height:1.3">${item.title}</span>
+      const link = item.link ? ` onclick="window.open('${item.link}','_blank')" style="cursor:pointer"` : '';
+      html += `<div class="sidebar-item"${link} style="flex-direction:column;align-items:flex-start;gap:2px">
+        <span style="font-size:0.75rem;font-weight:600;color:var(--text-primary);line-height:1.3">${this.escapeHtml ? this.escapeHtml(item.title) : item.title}</span>
         <span style="font-size:0.65rem;color:var(--text-muted)">${item.symbol||''} &middot; ${item.publisher||''}</span>
       </div>`;
     }
@@ -716,6 +717,13 @@ async function fetchNews() {
 }
 
 /* ===== DAILY SUMMARY ===== */
+function fmtSummaryText(text) {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/`(.*?)`/g, '<code style="background:var(--bg-elevated);padding:1px 6px;border-radius:4px;font-size:0.85em">$1</code>')
+    .replace(/\n/g, '<br>');
+}
+
 function showDailySummary() {
   const modal = document.getElementById('daily-summary-modal');
   const body = document.getElementById('daily-summary-body');
@@ -726,12 +734,11 @@ function showDailySummary() {
   fetch('/api/daily-summary')
     .then(r => r.json())
     .then(data => {
-      if (data && data.summary) {
-        const lines = data.summary.split('\n').map(l => l.trim()).filter(l => l);
-        let html = '<div class="modal-header" style="padding-bottom:14px"><div class="modal-title"><div><div class="modal-sym" style="font-size:1.2rem">\u{1F4CA} Ringkasan Penutupan Pasar</div><div class="modal-name">' + (data.date || '-') + '</div></div></div></div>';
-        html += '<div class="modal-grid" style="grid-template-columns:1fr;padding:8px 28px 24px">';
-        html += '<div class="modal-section" style="grid-column:1/-1"><div class="reasoning-text" style="white-space:pre-line;font-size:0.9rem;line-height:1.7">' + data.summary + '</div></div>';
-        html += '</div>';
+      if (data && data.generated && data.summary) {
+        const html = '<div class="modal-header" style="padding-bottom:14px"><div class="modal-title"><div><div class="modal-sym" style="font-size:1.2rem">\u{1F4CA} Ringkasan Penutupan Pasar</div><div class="modal-name">' + (data.date || '-') + '</div></div></div></div>' +
+          '<div class="modal-grid" style="grid-template-columns:1fr;padding:8px 28px 24px">' +
+          '<div class="modal-section" style="grid-column:1/-1"><div class="reasoning-text" style="white-space:pre-line;font-size:0.9rem;line-height:1.7">' + fmtSummaryText(data.summary) + '</div></div>' +
+          '</div>';
         body.innerHTML = html;
       } else {
         body.innerHTML = '<div class="modal-header" style="padding-bottom:14px"><div class="modal-title"><div><div class="modal-sym" style="font-size:1.2rem">\u{1F4CA} Ringkasan Harian</div></div></div></div><div class="modal-grid" style="grid-template-columns:1fr;padding:28px"><div class="empty">Ringkasan belum tersedia. Tunggu hingga pasar tutup (16:00 WIB) untuk laporan otomatis.</div></div>';
@@ -785,6 +792,7 @@ setInterval(fetchMarketLive, 15000);
 setInterval(fetchHistory, 15000);
 setInterval(fetchPortfolio, 15000);
 setInterval(fetchSparklines, 30000);
+setInterval(fetchNews, 120000);
 fetchLivePrices(); fetchMarketData(); fetchData(); fetchMarket(); fetchMarketLive();
 fetchHistory(); fetchPortfolio(); fetchSparklines(); fetchSectors(); fetchNews();
 </script>

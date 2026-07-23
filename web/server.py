@@ -22,6 +22,7 @@ REALTIME_LOCK = threading.Lock()
 DAILY_SUMMARY_CACHE = {}
 NEWS_CACHE = []
 NEWS_CACHE_TIME = 0
+DAILY_SUMMARY_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "daily_summary.json")
 
 def send_telegram_message(text):
     if IS_LOCAL:
@@ -64,7 +65,7 @@ def fetch_news_for_symbol(symbol):
                 "time": datetime.now().strftime("%H:%M")
             })
         return result
-    except:
+    except Exception:
         return []
 
 def get_aggregated_news():
@@ -76,19 +77,44 @@ def get_aggregated_news():
         from utils.fetch_data import SYMBOLS
         all_news = []
         seen = set()
-        for sym in SYMBOLS[:5]:
-            news = fetch_news_for_symbol(sym)
-            for item in news:
-                key = item["title"]
-                if key not in seen:
-                    seen.add(key)
-                    item["symbol"] = sym.replace(".JK", "")
-                    all_news.append(item)
-        NEWS_CACHE = all_news[:20]
-        NEWS_CACHE_TIME = now
+        for sym in SYMBOLS[:8]:
+            try:
+                news = fetch_news_for_symbol(sym)
+                for item in news:
+                    key = item["title"]
+                    if key and key not in seen:
+                        seen.add(key)
+                        item["symbol"] = sym.replace(".JK", "")
+                        all_news.append(item)
+            except Exception:
+                continue
+        if all_news:
+            NEWS_CACHE = all_news[:20]
+            NEWS_CACHE_TIME = now
+            return NEWS_CACHE
+    except Exception:
+        pass
+
+    if NEWS_CACHE:
         return NEWS_CACHE
-    except:
-        return NEWS_CACHE or []
+
+    try:
+        fallback_url = "https://query1.finance.yahoo.com/v8/finance/chart/^JKSE?range=1d&interval=1d"
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(fallback_url, headers=headers, timeout=5)
+        if resp.ok:
+            NEWS_CACHE = [{
+                "title": "Data pasar IHSG tersedia. Buka halaman detail untuk info lebih lanjut.",
+                "publisher": "Yahoo Finance",
+                "link": "https://finance.yahoo.com/quote/%5EJKSE/",
+                "symbol": "IHSG",
+                "time": datetime.now().strftime("%H:%M")
+            }]
+            NEWS_CACHE_TIME = now
+    except Exception:
+        pass
+
+    return NEWS_CACHE or []
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 HISTORY_PATH = os.path.join(BASE, "..", "data", "history.json")
@@ -712,10 +738,31 @@ def api_news():
 
 @app.route("/api/daily-summary", methods=["GET"])
 def api_daily_summary_get():
+    if DAILY_SUMMARY_CACHE.get("generated"):
+        return jsonify({
+            "summary": DAILY_SUMMARY_CACHE.get("text", ""),
+            "date": DAILY_SUMMARY_CACHE.get("date", ""),
+            "generated": True
+        })
+    try:
+        if os.path.exists(DAILY_SUMMARY_PATH):
+            with open(DAILY_SUMMARY_PATH, encoding="utf-8") as f:
+                saved = json.load(f)
+            if saved.get("generated"):
+                DAILY_SUMMARY_CACHE["text"] = saved.get("text", "")
+                DAILY_SUMMARY_CACHE["date"] = saved.get("date", "")
+                DAILY_SUMMARY_CACHE["generated"] = True
+                return jsonify({
+                    "summary": saved.get("text", ""),
+                    "date": saved.get("date", ""),
+                    "generated": True
+                })
+    except Exception as e:
+        print(f"[DAILY SUMMARY] File read error: {e}")
     return jsonify({
-        "summary": DAILY_SUMMARY_CACHE.get("text", ""),
-        "date": DAILY_SUMMARY_CACHE.get("date", ""),
-        "generated": DAILY_SUMMARY_CACHE.get("generated", False)
+        "summary": "",
+        "date": "",
+        "generated": False
     })
 
 def generate_daily_summary():

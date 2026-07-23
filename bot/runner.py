@@ -68,6 +68,31 @@ def build_and_send(is_daily=False):
         send_message(msg)
         tag = "DAILY CLOSING" if is_daily else "30-min BROADCAST"
         print(f"[{tag}] Sent ({len(data)} stocks)")
+
+        if is_daily:
+            try:
+                ihsg_save = ihsg or {}
+                gainers = sorted(data, key=lambda x: x.get("change_pct", 0), reverse=True)[:3]
+                losers = sorted(data, key=lambda x: x.get("change_pct", 0))[:3]
+                top3 = sorted([r for r in data if r.get("is_top3")], key=lambda x: x.get("score", 0), reverse=True)
+                summary_entry = {
+                    "text": msg,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "generated": True,
+                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "data": data,
+                    "ihsg": ihsg_save,
+                    "gainers": gainers,
+                    "losers": losers,
+                    "top3": top3
+                }
+                summary_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "daily_summary.json")
+                with open(summary_path, "w", encoding="utf-8") as f:
+                    json.dump(summary_entry, f, ensure_ascii=False, indent=2)
+                print(f"[{tag}] Daily summary saved to data/daily_summary.json")
+            except Exception as e:
+                print(f"[{tag}] Failed to save daily summary: {e}")
+
         return True
     return False
 
