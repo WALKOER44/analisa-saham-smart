@@ -56,7 +56,7 @@ def run_analysis():
 
 def is_market_hours():
     now = datetime.now()
-    return LIVE_START <= now.hour < LIVE_END
+    return now.weekday() < 5 and LIVE_START <= now.hour < LIVE_END
 
 def run():
     from config import IS_LOCAL

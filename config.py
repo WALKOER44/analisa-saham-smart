@@ -17,6 +17,11 @@ TELEGRAM_CHAT_ID = CHAT_ID
 # dan akan mengarahkan output ke LLM lokal (Ollama / LM Studio / OpenAI-compatible)
 IS_LOCAL = os.getenv("IS_LOCAL", "False").strip().lower() in ("true", "1", "yes")
 
+# Owner / Super Admin ID (opsional) — user Telegram ini akan selalu
+# diizinkan menggunakan perintah admin seperti /clear meskipun
+# bukan admin grup. Isi dengan numeric user ID (bisa dicek via @userinfobot).
+OWNER_ID = os.getenv("OWNER_ID", "").strip()
+
 # Local LLM Configuration (hanya dipakai ketika IS_LOCAL=True)
 LOCAL_LLM_ENDPOINT = os.getenv("LOCAL_LLM_ENDPOINT", "http://localhost:11434")  # Ollama default
 LOCAL_LLM_MODEL = os.getenv("LOCAL_LLM_MODEL", "llama3.2")                     # Model name

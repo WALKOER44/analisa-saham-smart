@@ -3,7 +3,7 @@ import json
 import logging
 import os
 import requests
-from config import TOKEN, IS_LOCAL, LOCAL_LLM_ENDPOINT, LOCAL_LLM_MODEL
+from config import TOKEN, IS_LOCAL, LOCAL_LLM_ENDPOINT, LOCAL_LLM_MODEL, OWNER_ID
 
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 
@@ -101,16 +101,35 @@ def send_message(msg, chat_id=None):
             print(f"[TELEGRAM] Error sending to {cid}: {e}")
 
 
-def get_chat_admins(chat_id):
+def get_chat_owner_and_admins(chat_id):
     try:
         url = f"https://api.telegram.org/bot{TOKEN}/getChatAdministrators"
         resp = requests.post(url, data={"chat_id": chat_id}, timeout=10)
         if resp.ok:
             result = resp.json()
-            return [admin["user"]["id"] for admin in result.get("result", [])]
+            owner_id = None
+            admin_ids = []
+            for admin in result.get("result", []):
+                uid = admin["user"]["id"]
+                status = admin.get("status", "")
+                if status == "creator":
+                    owner_id = uid
+                admin_ids.append(uid)
+            return owner_id, admin_ids
     except Exception as e:
         print(f"[TELEGRAM] Error getting admins: {e}")
-    return []
+    return None, []
+
+
+def is_authorized_admin(chat_id, user_id):
+    owner_id, admin_ids = get_chat_owner_and_admins(chat_id)
+    if user_id == owner_id:
+        return True
+    if user_id in admin_ids:
+        return True
+    if OWNER_ID and str(user_id) == OWNER_ID:
+        return True
+    return False
 
 
 def delete_bot_messages(chat_id):
@@ -156,10 +175,9 @@ def _build_application():
         chat_id = update.effective_chat.id
         user_id = update.effective_user.id
 
-        admins = get_chat_admins(chat_id)
-        if user_id not in admins:
+        if not is_authorized_admin(chat_id, user_id):
             await update.message.reply_text(
-                "\u26a0\ufe0f Akses ditolak. Hanya admin grup yang dapat menggunakan perintah ini."
+                "\u26a0\ufe0f Akses ditolak. Hanya Owner / Creator / Admin grup yang dapat menggunakan perintah ini."
             )
             return
 

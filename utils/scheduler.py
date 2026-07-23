@@ -6,7 +6,7 @@ LIVE_END = 16
 
 def is_market_hours():
     now = datetime.now()
-    return LIVE_START <= now.hour < LIVE_END
+    return now.weekday() < 5 and LIVE_START <= now.hour < LIVE_END
 
 def run_loop(interval_minutes=15):
     print(f"[SCHEDULER] Mode LIVE ({LIVE_START}:00-{LIVE_END}:00 WIB)")

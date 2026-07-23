@@ -25,8 +25,15 @@ def is_market_day():
     return datetime.now().weekday() < 5
 
 
-def must_send_closing_recap(now):
+def is_closing_moment(now):
     return is_market_day() and now.hour == LIVE_END and now.minute == 0
+
+
+def is_silent_hours():
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return True
+    return now.hour < LIVE_START or now.hour >= LIVE_END
 
 
 def read_history():
@@ -66,7 +73,7 @@ def build_and_send(is_daily=False):
 
 
 def market_scheduler():
-    last_broadcast = 0
+    last_broadcast = 0.0
     closing_sent_today = False
     closing_sent_date = None
 
@@ -89,13 +96,18 @@ def market_scheduler():
                     build_and_send(is_daily=False)
                     last_broadcast = now_ts
                 time.sleep(30)
-            else:
-                if must_send_closing_recap(now) and not closing_sent_today and today != closing_sent_date:
-                    build_and_send(is_daily=True)
-                    closing_sent_today = True
-                    closing_sent_date = today
-                    print("[SCHEDULER] Closing recap sent. Bot will be silent until next market day 09:00.")
+                continue
+
+            if is_closing_moment(now) and not closing_sent_today and today != closing_sent_date:
+                build_and_send(is_daily=True)
+                closing_sent_today = True
+                closing_sent_date = today
+                print("[SCHEDULER] Closing recap sent. Bot is now silent until 09:00 tomorrow.")
                 time.sleep(60)
+                continue
+
+            time.sleep(60)
+
         except Exception as e:
             print(f"[SCHEDULER] Error: {e}")
             time.sleep(30)
