@@ -60,6 +60,9 @@
     <div class="top3-grid" id="top3-grid"></div>
 
     <div class="section-title">Portofolio</div>
+    <div id="portfolio-summary" style="display:none;margin-bottom:12px">
+      <div class="market-bar" id="portfolio-value-bar" style="justify-content:space-around;padding:10px 16px"></div>
+    </div>
     <div class="grid" id="portfolio-grid"></div>
 
     <div class="section-title">Watchlist Semua Saham</div>
@@ -80,6 +83,7 @@
       <button class="btn" data-filter="buy" onclick="setFilter('buy', this)">Beli</button>
       <button class="btn" data-filter="sell" onclick="setFilter('sell', this)">Jual</button>
       <button class="btn danger" onclick="deleteAll()">Hapus Semua</button>
+      <button class="btn" onclick="exportCSV()" style="border-color:var(--accent);color:var(--accent-light)">&#x1F4E5; Export CSV</button>
     </div>
     <div class="grid" id="history-grid"></div>
   </div>
@@ -100,6 +104,10 @@
     <div class="sidebar-box">
       <div class="sidebar-box-title">&#x1F4F0; Berita Terkini</div>
       <div id="sidebar-news"><div class="empty" style="padding:12px 0">Memuat...</div></div>
+    </div>
+    <div class="sidebar-box">
+      <div class="sidebar-box-title">&#x1F3CA; Market Heatmap</div>
+      <div id="sidebar-heatmap"><div class="empty" style="padding:12px 0">Memuat...</div></div>
     </div>
     <div class="sidebar-box" style="text-align:center">
       <button class="btn" onclick="showDailySummary()" style="width:100%;justify-content:center">&#x1F4CA; Ringkasan Harian</button>
@@ -341,7 +349,7 @@ async function fetchSectors() {
   } catch(e) {}
 }
 
-function render() { renderTop3(); renderCards(); renderSidebar(); }
+function render() { renderTop3(); renderCards(); renderSidebar(); renderHeatmap(); }
 
 function clean(sym) { return (sym||'').replace('.JK',''); }
 function companyEmoji(sym) { return COMPANY_EMOJI[clean(sym)] || '\u{1F3ED}'; }
@@ -349,6 +357,25 @@ function trendEmoji(t) { return TREND_EMOJI[t] || ''; }
 function noteEmoji(n) { return NOTE_EMOJI[n] || ''; }
 function signalEmoji(s) { return s==='BUY'?'\u{1F7E2}':(s==='SELL'?'\u{1F534}':'\u{26AA}'); }
 function changeArrow(v) { if(v>0) return '\u{2191}'; if(v<0) return '\u{2193}'; return '\u{2192}'; }
+
+function updateCalc(id) {
+  const input=document.getElementById('calc-lot-'+id);
+  const totalEl=document.getElementById('calc-total-'+id);
+  if(!input||!totalEl)return;
+  let lot=parseInt(input.value,10)||1;
+  if(lot<1)lot=1;if(lot>9999)lot=9999;
+  input.value=lot;
+  const container=input.closest('.calc-container');
+  const price=parseFloat(container?container.dataset.price:0)||0;
+  totalEl.textContent='Rp '+(price*100*lot).toLocaleString();
+}
+function adjustLot(id,delta) {
+  const input=document.getElementById('calc-lot-'+id);
+  if(!input)return;
+  let lot=parseInt(input.value,10)||1;
+  lot+=delta;if(lot<1)lot=1;if(lot>9999)lot=9999;
+  input.value=lot;updateCalc(id);
+}
 
 async function fetchMarketLive() { try { const r=await fetch('/api/market_live'); window.marketLiveData=await r.json(); renderMarketChart(); } catch(e) {} }
 
@@ -417,14 +444,28 @@ function openModal(symbol) {
   const cs=clean(symbol), TO=5000;
   var sd={}, cd=JSON.parse(JSON.stringify(COMPANY_FALLBACK_DATA)); cd.name=COMPANY_NAME[cs]||cs;
   var intra={prices:[],change:0,change_pct:0,high:0,low:0}, hist={prices:[],change:0,change_pct:0,high:0,low:0}, pred={prediction:null,target:0,direction:'neutral'};
-  function tryRender(){ const l=window.livePrices||{}; if(l[symbol]&&(!sd.price||sd.price===0)){sd.price=l[symbol].price;sd.change_pct=l[symbol].change_pct} renderModal(cs,cd,sd,intra,hist,pred); }
-  fetchWithTimeout('/api/latest',TO).then(function(d){var f=(d||[]).find(function(x){return x.symbol===symbol});if(f)sd=f}).catch(function(){}).then(function(){return fetchWithTimeout('/api/company/'+symbol,TO)}).then(function(d){if(d&&!d.error)cd=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/intraday/'+symbol,TO)}).then(function(d){if(d&&d.prices)intra=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/history_chart/'+symbol,TO)}).then(function(d){if(d&&d.prices)hist=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/predictions/'+symbol,TO)}).then(function(d){if(d&&d.prediction!==undefined)pred=d}).catch(function(){}).then(function(){tryRender()});
+  var ob={bids:[],asks:[],spread:0,mid:0}, cmt=[];
+  function tryRender(){ const l=window.livePrices||{}; if(l[symbol]&&(!sd.price||sd.price===0)){sd.price=l[symbol].price;sd.change_pct=l[symbol].change_pct} renderModal(cs,cd,sd,intra,hist,pred,ob,cmt); }
+  fetchWithTimeout('/api/latest',TO).then(function(d){var f=(d||[]).find(function(x){return x.symbol===symbol});if(f)sd=f}).catch(function(){}).then(function(){return fetchWithTimeout('/api/company/'+symbol,TO)}).then(function(d){if(d&&!d.error)cd=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/intraday/'+symbol,TO)}).then(function(d){if(d&&d.prices)intra=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/history_chart/'+symbol,TO)}).then(function(d){if(d&&d.prices)hist=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/predictions/'+symbol,TO)}).then(function(d){if(d&&d.prediction!==undefined)pred=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/orderbook/'+symbol,TO)}).then(function(d){if(d&&d.bids)ob=d}).catch(function(){}).then(function(){return fetchWithTimeout('/api/comments/'+symbol,TO)}).then(function(d){if(d&&d.length)cmt=d}).catch(function(){}).then(function(){tryRender()});
   setTimeout(function(){if(body.innerHTML==='<div class="modal-loading">Memuat data...</div>')tryRender()},TO+500);
 }
 
 function closeModal(e) { if(e&&e.target!==document.getElementById('modal')) return; document.getElementById('modal').style.display='none'; document.body.style.overflow=''; }
 
-function renderModal(sym,company,stock,intraday,histChart,predictions) {
+function obRows(ob) {
+  if(!ob||!ob.bids||!ob.bids.length) return '<tr><td colspan="5" class="empty" style="padding:12px">Data tidak tersedia</td></tr>';
+  let rows='';
+  for(let i=0;i<5;i++){const b=ob.bids[i]||{},a=ob.asks[i]||{};rows+=`<tr><td class="bid-px">${(b.price||0).toLocaleString()}</td><td class="bid-vol">${(b.volume||0).toLocaleString()}</td><td class="mid-col"></td><td class="ask-vol">${(a.volume||0).toLocaleString()}</td><td class="ask-px">${(a.price||0).toLocaleString()}</td></tr>`;}
+  if(ob.imbalance!==undefined){const c=ob.imbalance>0?'imb-bull':(ob.imbalance<0?'imb-bear':'imb-neut');rows+=`<tr class="ob-imb"><td colspan="5"><span class="${c}">Imbalance: ${ob.imbalance>0?'+':''}${ob.imbalance}%</span></td></tr>`;}
+  return rows;
+}
+
+function cmtHtml(comments) {
+  if(!comments||!comments.length) return '<div class="empty" style="padding:12px">Belum ada komentar</div>';
+  return comments.map(c=>`<div class="cmt-item"><span class="cmt-avatar">${c.avatar||'💬'}</span><div class="cmt-body"><div class="cmt-header"><span class="cmt-user">${c.user}</span><span class="cmt-time">${c.time}</span></div><div class="cmt-text">${c.text}</div></div></div>`).join('');
+}
+
+function renderModal(sym,company,stock,intraday,histChart,predictions,orderbook,comments) {
   const emoji=COMPANY_EMOJI[sym]||'\u{1F3ED}', name=company.name||COMPANY_NAME[sym]||sym, sector=company.sector||'-', industry=company.industry||'-';
   function fmt(n){if(!n||n===0)return'-';if(n>=1e12)return(n/1e12).toFixed(2)+' T';if(n>=1e9)return(n/1e9).toFixed(2)+' M';if(n>=1e6)return(n/1e6).toFixed(2)+' Jt';return n.toLocaleString()}
   const sigCls=stock.signal==='BUY'?'tag-buy':(stock.signal==='SELL'?'tag-sell':'tag-hold'), sigEmoji=signalEmoji(stock.signal), chartId='chart-'+Date.now();
@@ -481,6 +522,30 @@ function renderModal(sym,company,stock,intraday,histChart,predictions) {
         <div class="pred-box">${predictions&&predictions.prediction?`<span class="pred-direction ${predictions.direction==='up'?'up':'down'}">${predictions.direction==='up'?'\u{1F7E2}':'\u{1F534}'} ${predictions.direction==='up'?'Bullish':'Bearish'}</span><span class="pred-target">Target: Rp ${predictions.prediction.toLocaleString()}</span><span class="pred-change ${predictions.change_pct>0?'up':'down'}">${predictions.change_pct>0?'+':''}${predictions.change_pct}%</span>`:'<span class="pred-na">Data tidak mencukupi</span>'}</div>
       </div>
       <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Pergerakan 3 Bulan <span id="hist-chart-change" style="float:right;font-size:0.85rem"></span></div><div style="position:relative"><canvas id="hist-${chartId}" height="140"></canvas></div></div>
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Kalkulator Lot Mini</div>
+        <div class="calc-container" data-price="${stock.price||0}">
+          <div class="calc-row"><span>Harga/Lembar</span><span class="calc-price">Rp ${(stock.price||0).toLocaleString()}</span></div>
+          <div class="calc-row"><span>Jumlah Lot</span>
+            <div class="calc-input-wrap">
+              <button class="calc-btn" onclick="window.adjustLot('${chartId}',-1)">−</button>
+              <input type="number" class="calc-lot" id="calc-lot-${chartId}" value="1" min="1" max="9999" oninput="window.updateCalc('${chartId}')">
+              <button class="calc-btn" onclick="window.adjustLot('${chartId}',1)">+</button>
+            </div>
+          </div>
+          <div class="calc-row total"><span>Total Modal (1 lot = 100 lbr)</span><span class="calc-total" id="calc-total-${chartId}">Rp ${((stock.price||0)*100).toLocaleString()}</span></div>
+        </div>
+      </div>
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Orderbook Bid &amp; Ask <span style="float:right;font-size:0.78rem;font-weight:400;color:var(--text-muted)">Mid: Rp ${(orderbook.mid||0).toLocaleString()} | Spread: ${orderbook.spread||0}</span></div>
+        <div class="ob-table-wrap">
+          <table class="ob-table">
+            <thead><tr><th style="color:var(--green)">Bid</th><th>Vol Bid</th><th></th><th>Vol Ask</th><th style="color:var(--red)">Ask</th></tr></thead>
+            <tbody>${obRows(orderbook)}</tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-section" style="grid-column:1/-1"><div class="modal-section-title">Komentar Trader</div>
+        <div class="comments-wrap">${cmtHtml(comments)}</div>
+      </div>
     </div>
     ${company.website?'<div class="modal-website"><a href="'+company.website+'" target="_blank" rel="noopener">'+company.website+'</a></div>':''}`;
   const hp=(histChart&&histChart.prices)||[];
@@ -727,6 +792,51 @@ function renderPortfolio() {
 }
 
 async function deleteAll() { if(!confirm('Hapus semua riwayat?')) return; await fetch('/api/delete_all',{method:'DELETE'}); fetchData(); fetchHistory(); }
+
+function exportCSV() { window.open('/api/export_csv', '_blank'); }
+
+async function fetchPortfolioValue() {
+  try {
+    const r = await fetch('/api/portfolio_value');
+    const d = await r.json();
+    if (d.holdings > 0) {
+      document.getElementById('portfolio-summary').style.display = 'block';
+      const el = document.getElementById('portfolio-value-bar');
+      const pnlCls = d.pnl >= 0 ? 'mkt-up' : 'mkt-down';
+      const arrow = d.pnl >= 0 ? '\u25B2' : '\u25BC';
+      const sign = d.pnl >= 0 ? '+' : '';
+      el.innerHTML =
+        `<div class="mkt-item ${pnlCls}" style="flex-direction:column;gap:2px;padding:6px 12px"><span class="mkt-label">Total Portofolio</span><span class="mkt-price">Rp ${Number(d.total_value).toLocaleString()}</span></div>` +
+        `<div class="mkt-item ${pnlCls}" style="flex-direction:column;gap:2px;padding:6px 12px"><span class="mkt-label">Untung/Rugi</span><span class="mkt-price">${arrow} ${sign}Rp ${Number(d.pnl).toLocaleString()}</span><span class="mkt-change">${sign}${d.pnl_pct}%</span></div>` +
+        `<div class="mkt-item" style="flex-direction:column;gap:2px;padding:6px 12px;background:var(--bg-elevated)"><span class="mkt-label">Saham Dipegang</span><span class="mkt-price" style="color:var(--text-primary)">${d.holdings}</span></div>`;
+    }
+  } catch(e) {}
+}
+
+function renderHeatmap() {
+  const latest = window.latestData || [];
+  const live = window.livePrices || {};
+  if (!latest.length) return;
+  const items = latest.map(d => {
+    const ld = live[d.symbol];
+    const pct = ld ? ld.change_pct : (d.change_pct || 0);
+    const sym = clean(d.symbol);
+    return { sym, pct, price: ld ? ld.price : d.price, signal: d.signal };
+  });
+  items.sort((a, b) => b.pct - a.pct);
+  let html = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px">';
+  for (const item of items) {
+    let bg, fg;
+    if (item.pct > 1) { bg = 'rgba(0,255,136,0.25)'; fg = '#00FF88'; }
+    else if (item.pct > 0) { bg = 'rgba(0,255,136,0.1)'; fg = '#6EE7B7'; }
+    else if (item.pct > -1) { bg = 'rgba(255,34,68,0.1)'; fg = '#FCA5A5'; }
+    else { bg = 'rgba(255,34,68,0.25)'; fg = '#FF2244'; }
+    html += `<div style="background:${bg};border-radius:6px;padding:4px 2px;text-align:center;cursor:pointer;font-size:0.6rem" title="${item.sym}: ${item.pct > 0 ? '+' : ''}${item.pct}%" onclick="openModal('${item.sym}.JK')"><div style="font-weight:700;color:${fg};line-height:1.2">${item.sym}</div><div style="font-size:0.55rem;color:${fg}">${item.pct > 0 ? '+' : ''}${item.pct.toFixed(1)}%</div></div>`;
+  }
+  html += '</div>';
+  diffUpdate('sidebar-heatmap', html);
+}
+
 document.addEventListener('keydown',function(e){if(e.key==='Escape'){closeModal();closeDailySummary();}});
 
 /* ===== NEWS SIDEBAR ===== */
@@ -825,10 +935,11 @@ setInterval(fetchMarket, 15000);
 setInterval(fetchMarketLive, 15000);
 setInterval(fetchHistory, 15000);
 setInterval(fetchPortfolio, 15000);
+setInterval(fetchPortfolioValue, 30000);
 setInterval(fetchSparklines, 30000);
 setInterval(fetchNews, 120000);
 fetchLivePrices(); fetchMarketData(); fetchData(); fetchMarket(); fetchMarketLive();
-fetchHistory(); fetchPortfolio(); fetchSparklines(); fetchSectors(); fetchNews();
+fetchHistory(); fetchPortfolio(); fetchPortfolioValue(); fetchSparklines(); fetchSectors(); fetchNews();
 </script>
 </body>
 </html>

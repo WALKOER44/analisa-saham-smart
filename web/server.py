@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import math
+import random
 import time as time_module
 import threading
 from datetime import datetime, timedelta
@@ -335,7 +336,7 @@ COMPANY_SECTORS = {
     "UNVR.JK": "Consumer Defensive", "CPIN.JK": "Consumer Defensive",
     "KLBF.JK": "Consumer Defensive",
     "ADRO.JK": "Energy", "PTBA.JK": "Energy",
-    "ANTM.JK": "Energy", "MEDC.JK": "Energy",
+    "ANTM.JK": "Energy", "MEDC.JK": "Energy", "PGAS.JK": "Energy",
     "GOTO.JK": "Technology"
 }
 
@@ -675,6 +676,63 @@ def api_delete_all():
         json.dump([], f)
     return jsonify({"status": "ok"})
 
+
+@app.route("/api/export_csv")
+def api_export_csv():
+    data = flatten(read_history())
+    if not data:
+        return "time,symbol,signal,price,score,trend,change_pct,rsi,confidence\n", 200, {"Content-Type": "text/csv", "Content-Disposition": "attachment; filename=history.csv"}
+    lines = ["time,symbol,signal,price,score,trend,change_pct,rsi,confidence,note"]
+    for d in data:
+        sym = d.get("symbol", "").replace(".JK", "")
+        lines.append(f"{d.get('time','')},{sym},{d.get('signal','')},{d.get('price',0)},{d.get('score',0)},{d.get('trend','')},{d.get('change_pct',0)},{d.get('rsi',0)},{d.get('confidence',50)},\"{d.get('note','')}\"")
+    csv = "\n".join(lines)
+    return csv, 200, {"Content-Type": "text/csv", "Content-Disposition": "attachment; filename=history.csv"}
+
+
+@app.route("/api/portfolio_value")
+def api_portfolio_value():
+    path = os.path.join(BASE, "..", "data", "portfolio.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            portfolio = json.load(f)
+    except:
+        return jsonify({"total_value": 0, "total_cost": 0, "pnl": 0, "pnl_pct": 0, "holdings": 0})
+
+    try:
+        latest = get_latest_flattened()
+        live = {}
+        from utils.fetch_data import SYMBOLS
+        for sym in SYMBOLS:
+            hist = yf_fetch(sym, "history", "2d", "1d")
+            if hist is not None and not hist.empty:
+                live[sym] = float(hist["Close"].iloc[-1])
+    except:
+        pass
+
+    total_value = 0
+    total_cost = 0
+    holdings = 0
+    for p in portfolio:
+        sym = p.get("symbol", "")
+        price = live.get(sym) or p.get("price", 0) or 0
+        entry_price = p.get("entry_price") or p.get("price", 0) or 0
+        lot = p.get("lot", 1)
+        shares = lot * 100
+        total_value += price * shares
+        total_cost += entry_price * shares
+        holdings += 1
+
+    pnl = total_value - total_cost
+    pnl_pct = round((pnl / total_cost) * 100, 2) if total_cost > 0 else 0
+    return jsonify({
+        "total_value": round(total_value, 0),
+        "total_cost": round(total_cost, 0),
+        "pnl": round(pnl, 0),
+        "pnl_pct": pnl_pct,
+        "holdings": holdings
+    })
+
 @app.route("/api/sectors")
 def api_sectors():
     return jsonify(COMPANY_SECTORS)
@@ -731,6 +789,127 @@ def api_market_data():
     result["news"] = get_aggregated_news()
     set_cached("api_market_data", result)
     return jsonify(result)
+
+@app.route("/api/orderbook/<symbol>")
+def api_orderbook(symbol):
+    cached = get_cached("ob_" + symbol)
+    if cached:
+        return jsonify(cached)
+    try:
+        hist = yf_fetch(symbol, "history", "5d", "1d")
+        if hist is None or hist.empty:
+            return jsonify({"bids": [], "asks": [], "spread": 0, "mid": 0})
+        last_price = float(hist["Close"].iloc[-1])
+        spread = round(last_price * random.uniform(0.001, 0.003), 2)
+        atr = 0
+        if len(hist) > 14:
+            clean = hist.dropna(subset=["Close"])
+            if len(clean) > 14:
+                atr = float((clean["High"] - clean["Low"]).rolling(14).mean().iloc[-1])
+        tick_size = max(round(atr / 20, -1), 5) if atr >= 10 else max(round(atr / 10), 1)
+        if tick_size < 1:
+            tick_size = 1
+
+        bids, asks = [], []
+        for i in range(5):
+            bid_px = round(last_price - (i + 1) * tick_size, 0)
+            ask_px = round(last_price + (i + 1) * tick_size, 0)
+            if bid_px < 1: bid_px = 1
+            bid_vol = random.randint(10, 500) * 100
+            ask_vol = random.randint(10, 300) * 100
+            bids.append({"price": int(bid_px), "volume": bid_vol})
+            asks.append({"price": int(ask_px), "volume": ask_vol})
+
+        total_bid_vol = sum(b["volume"] for b in bids)
+        total_ask_vol = sum(a["volume"] for a in asks)
+        result = {
+            "mid": int(last_price),
+            "spread": int(spread),
+            "bids": bids,
+            "asks": asks,
+            "total_bid_vol": total_bid_vol,
+            "total_ask_vol": total_ask_vol,
+            "imbalance": round((total_bid_vol - total_ask_vol) / (total_bid_vol + total_ask_vol + 1) * 100, 1)
+        }
+        set_cached("ob_" + symbol, result)
+        return jsonify(result)
+    except:
+        return jsonify({"bids": [], "asks": [], "spread": 0, "mid": 0})
+
+@app.route("/api/comments/<symbol>")
+def api_comments(symbol):
+    cached = get_cached("cmt_" + symbol)
+    if cached:
+        return jsonify(cached)
+    try:
+        latest = get_latest_flattened()
+        sd = next((d for d in latest if d["symbol"] == symbol), None)
+        if not sd:
+            return jsonify([])
+        signal = sd.get("signal", "HOLD")
+        score = sd.get("score", 0)
+        change = sd.get("change_pct", 0)
+        price = sd.get("price", 0)
+        cs = symbol.replace(".JK", "")
+        trend = sd.get("trend", "FLAT")
+
+        templates_bullish = [
+            f"{cs} hari ini terbang tinggi! Bullish banget, pantau terus!",
+            f"Signal BUY mantep! {cs} siap naik, jangan lepas!",
+            f"Volume masuk gede, {cs} mau lanjut naik nih!",
+            f"Break resistance, {cs} target naik lagi! Gas!",
+            f"Chart bagus, MA20 naik, {cs} hold dulu!",
+            f"Sentimen positif, {cs} jadi primadona hari ini!",
+            f"Udah waktunya TP dikit, sisanya tahan! {cs} solid!",
+            f"OMG {cs} hijau melulu, kapan turunnya?"
+        ]
+        templates_bearish = [
+            f"{cs} lagi tekanan jual, wait and see aja!",
+            f"Signal SELL, {cs} turun terus, cut loss aja!",
+            f"Break support, {cs} rawan turun lagi! Hati-hati!",
+            f"Volume jual besar, {cs} masih bearish!",
+            f"{cs} lagi koreksi, jangan beli dulu!",
+            f"Trend turun, {cs} makin dalam, nyali diuji!",
+            f"Darurat! {cs} merah banget, ada apa ini?!",
+            f"{cs} anjlok, mending cabut daripada makin bengkak!"
+        ]
+        templates_neutral = [
+            f"{cs} sideways aja, nunggu katalis baru!",
+            f"Volume tipis, {cs} lagi sepi peminat!",
+            f"{cs} konsolidasi, sabar dulu cuan!",
+            f"Signal HOLD, {cs} belum jelas arahnya!",
+            f"Range sempit, {cs} pantau dulu!",
+            f"{cs} lagi wait and see, ikutin aja!",
+            f"Market lagi lesu, {cs} ikut lesu!",
+            f"Belum ada sentimen, {cs} diem aja!"
+        ]
+
+        templates = templates_bullish if signal == "BUY" else (templates_bearish if signal == "SELL" else templates_neutral)
+        if abs(score) >= 3:
+            templates = templates_bullish if score > 0 else templates_bearish
+
+        count = random.randint(3, 6)
+        selected = random.sample(templates, min(count, len(templates)))
+        comments = []
+        now = datetime.now()
+        for i, text in enumerate(selected):
+            mt = now - timedelta(minutes=random.randint(1, 60))
+            comments.append({
+                "text": text,
+                "user": random.choice([
+                    "TraderPemula", "SahamHunter", "BossSaham", "CuanTerus",
+                    "AyahSaham", "MbahTrading", "SiGembulSaham", "BroInvestor",
+                    "NengSaham", "AbangSaham", "TraderSantuy", "SultanSaham",
+                    "MakCikSaham", "KakakSaham"
+                ]),
+                "time": mt.strftime("%H:%M"),
+                "sentiment": signal,
+                "avatar": random.choice(["🐂", "🐻", "🦅", "🐺", "🦊", "🐉", "🐋", "🦈"])
+            })
+        set_cached("cmt_" + symbol, comments)
+        return jsonify(comments)
+    except:
+        return jsonify([])
 
 @app.route("/api/news")
 def api_news():

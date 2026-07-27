@@ -25,17 +25,6 @@ def is_market_day():
     return datetime.now().weekday() < 5
 
 
-def is_closing_moment(now):
-    return is_market_day() and now.hour == LIVE_END and now.minute == 0
-
-
-def is_silent_hours():
-    now = datetime.now()
-    if now.weekday() >= 5:
-        return True
-    return now.hour < LIVE_START or now.hour >= LIVE_END
-
-
 def read_history():
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "history.json")
     try:
@@ -99,23 +88,26 @@ def build_and_send(is_daily=False):
 
 def market_scheduler():
     last_broadcast = 0.0
-    closing_sent_today = False
     closing_sent_date = None
 
     while True:
         try:
             now = datetime.now()
             today = now.date()
+            weekday = now.weekday()
+            hour = now.hour
 
-            if not is_market_day():
-                closing_sent_today = False
+            is_weekday = weekday < 5
+
+            if not is_weekday:
                 closing_sent_date = None
                 time.sleep(120)
                 continue
 
-            if is_market_hours():
-                closing_sent_today = False
-                closing_sent_date = None
+            is_open = LIVE_START <= hour < LIVE_END
+            is_past_close = hour >= LIVE_END
+
+            if is_open:
                 now_ts = time.time()
                 if now_ts - last_broadcast >= BROADCAST_INTERVAL:
                     build_and_send(is_daily=False)
@@ -123,11 +115,10 @@ def market_scheduler():
                 time.sleep(30)
                 continue
 
-            if is_closing_moment(now) and not closing_sent_today and today != closing_sent_date:
+            if is_past_close and closing_sent_date != today:
                 build_and_send(is_daily=True)
-                closing_sent_today = True
                 closing_sent_date = today
-                print("[SCHEDULER] Closing recap sent. Bot is now silent until 09:00 tomorrow.")
+                print(f"[SCHEDULER] Closing recap sent for {today}. Silent until next market day.")
                 time.sleep(60)
                 continue
 

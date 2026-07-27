@@ -84,10 +84,12 @@ def send_message(msg, chat_id=None):
 
     log = _load_message_log()
 
-    for cid in targets:
+    max_len = 4096
+
+    def _send_single(cid, text):
         try:
             url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-            resp = requests.post(url, data={"chat_id": cid, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+            resp = requests.post(url, data={"chat_id": cid, "text": text, "parse_mode": "Markdown"}, timeout=10)
             if resp.ok:
                 result = resp.json()
                 msg_id = result.get("result", {}).get("message_id")
@@ -99,6 +101,14 @@ def send_message(msg, chat_id=None):
                     _save_message_log(log)
         except Exception as e:
             print(f"[TELEGRAM] Error sending to {cid}: {e}")
+
+    for cid in targets:
+        if len(msg) <= max_len:
+            _send_single(cid, msg)
+        else:
+            parts = [msg[i:i+max_len] for i in range(0, len(msg), max_len)]
+            for part in parts:
+                _send_single(cid, part)
 
 
 def get_chat_owner_and_admins(chat_id):
