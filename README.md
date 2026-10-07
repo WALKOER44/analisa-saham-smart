@@ -45,6 +45,23 @@ Untuk menutup sistem, cukup tutup jendela command prompt server atau engine yang
 
 ---
 
-## 5. Troubleshooting (Kendala & Solusi)
+## 5. Konfigurasi Deploy (Deploy Configuration)
+
+Untuk menambahkan URL website deploy:
+1. Buka file `web/templates/index.html`
+2. Cari section `About` atau `Settings`
+3. Tambahkan link ke website deploy di sana
+
+Contoh:
+```html
+<div class="about-section">
+  <h3>Tentang</h3>
+  <p>Website Live: <a href="https://your-deploy-url.com">your-deploy-url.com</a></p>
+</div>
+```
+
+---
+
+## 6. Troubleshooting (Kendala & Solusi)
 - **Modul kurang / Error `ModuleNotFoundError`**: Jalankan ulang `pip install -r requirements.txt`.
 - **Port 5000 sudah dipakai**: Tutup aplikasi lain yang menggunakan port 5000 atau restart komputer.
