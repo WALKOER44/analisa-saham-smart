@@ -48,7 +48,7 @@ def run_analysis():
     for r in results:
         add_trade(r["symbol"], r["signal"], r["price"])
         c = clean_symbol(r["symbol"])
-        flag = " ★" if r["is_top3"] else ""
+        flag = " *" if r["is_top3"] else ""
         print(f"  {c:6s}{flag} | {r['signal']:5s} | score={r['score']:+d} | {r['trend']:10s} | {r['note']}")
 
     print(f"\n[DONE] {len(results)} stocks analyzed")
